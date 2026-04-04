@@ -46,34 +46,20 @@ python3 py/order4.py path/to/file.csv 10
 - **Columns used**: 2–6 (skips draw_num and mega)
 - **Window size**: 4 rows
 
-### order3next.py
-Predicts the next draw using 3‑row pattern frequencies.
+### order_next.py
+Predicts the next draw using 4‑row pattern frequencies with a two‑step approach.
 
 ```bash
 # Use default file
-python3 py/order3next.py
+python3 py/order_next.py
 
 # Specify a custom file
-python3 py/order3next.py path/to/file.csv
+python3 py/order_next.py path/to/file.csv
 ```
 
-- **How it works**: Learns which 4th value most commonly follows each 3‑value vertical pattern, then applies this to the last 3 rows
-- **Output**: Predicted next value for each column 2–6
-- **Target**: Predicts the draw immediately after the last row in the input file
-
-### order4next.py
-Predicts the next draw using 4‑row pattern frequencies.
-
-```bash
-# Use default file
-python3 py/order4next.py
-
-# Specify a custom file
-python3 py/order4next.py path/to/file.csv
-```
-
-- **How it works**: Learns which 5th value most commonly follows each 4‑value vertical pattern, then applies this to the last 4 rows
-- **Output**: Predicted next value for each column 2–6
+- **Step 1**: Uses 4‑row patterns to predict the next value
+- **Step 2**: "Disappears" the 4th row and uses historical 3‑row → 4th‑row mappings to predict
+- **Output**: Shows both predictions for comparison
 - **Target**: Predicts the draw immediately after the last row in the input file
 
 ## CSV Format
