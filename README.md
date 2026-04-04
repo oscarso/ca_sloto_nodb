@@ -1,6 +1,6 @@
-# Lottery Pattern Analysis
+# ca_sloto Pattern Analysis
 
-Scripts to analyze vertical patterns in lottery draw data and predict the next draw.
+Scripts to analyze vertical patterns in ca_sloto draw data and predict the next draw.
 
 ## Scripts
 
@@ -89,3 +89,7 @@ draw_num;d1;d2;d3;d4;mega
 - Column 1: Draw Number (ignored for pattern analysis)
 - Columns 2–6: Main numbers (used for pattern analysis)
 - Column 7: Mega/extra number (ignored for pattern analysis)
+
+## ca_sloto
+
+Scripts designed for ca_sloto draw data analysis and prediction.
