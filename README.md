@@ -4,6 +4,27 @@ Scripts to analyze vertical patterns in ca_sloto draw data and predict the next 
 
 ## Scripts
 
+### order2.py
+Analyzes 2‑row vertical patterns in columns 2–6 and shows frequencies.
+
+```bash
+# Show all patterns (default file)
+python3 py/order2.py
+
+# Show all patterns from a custom file
+python3 py/order2.py path/to/file.csv
+
+# Show top 5 patterns (default file)
+python3 py/order2.py 5
+
+# Show top 10 patterns from a custom file
+python3 py/order2.py path/to/file.csv 10
+```
+
+- **Output**: 2‑value tuples and their frequencies, sorted by descending frequency
+- **Columns used**: 2–6 (skips draw_num and mega)
+- **Window size**: 2 rows
+
 ### order3.py
 Analyzes 3‑row vertical patterns in columns 2–6 and shows frequencies.
 
@@ -46,8 +67,113 @@ python3 py/order4.py path/to/file.csv 10
 - **Columns used**: 2–6 (skips draw_num and mega)
 - **Window size**: 4 rows
 
+### order5.py
+Analyzes 5‑row vertical patterns in columns 2–6 and shows frequencies.
+
+```bash
+# Show all patterns (default file)
+python3 py/order5.py
+
+# Show all patterns from a custom file
+python3 py/order5.py path/to/file.csv
+
+# Show top 5 patterns (default file)
+python3 py/order5.py 5
+
+# Show top 10 patterns from a custom file
+python3 py/order5.py path/to/file.csv 10
+```
+
+- **Output**: 5‑value tuples and their frequencies, sorted by descending frequency
+- **Columns used**: 2–6 (skips draw_num and mega)
+- **Window size**: 5 rows
+
+### order_m2.py
+Analyzes 2‑row vertical patterns in the mega column (column 7) and shows frequencies.
+
+```bash
+# Show all patterns (default file)
+python3 py/order_m2.py
+
+# Show all patterns from a custom file
+python3 py/order_m2.py path/to/file.csv
+
+# Show top 5 patterns (default file)
+python3 py/order_m2.py 5
+
+# Show top 10 patterns from a custom file
+python3 py/order_m2.py path/to/file.csv 10
+```
+
+- **Output**: 2‑value tuples and their frequencies, sorted by descending frequency
+- **Columns used**: Column 7 (mega number only)
+- **Window size**: 2 rows
+
+### order_m3.py
+Analyzes 3‑row vertical patterns in the mega column (column 7) and shows frequencies.
+
+```bash
+# Show all patterns (default file)
+python3 py/order_m3.py
+
+# Show all patterns from a custom file
+python3 py/order_m3.py path/to/file.csv
+
+# Show top 5 patterns (default file)
+python3 py/order_m3.py 5
+
+# Show top 10 patterns from a custom file
+python3 py/order_m3.py path/to/file.csv 10
+```
+
+- **Output**: 3‑value tuples and their frequencies, sorted by descending frequency
+- **Columns used**: Column 7 (mega number only)
+- **Window size**: 3 rows
+
+### order_m4.py
+Analyzes 4‑row vertical patterns in the mega column (column 7) and shows frequencies.
+
+```bash
+# Show all patterns (default file)
+python3 py/order_m4.py
+
+# Show all patterns from a custom file
+python3 py/order_m4.py path/to/file.csv
+
+# Show top 5 patterns (default file)
+python3 py/order_m4.py 5
+
+# Show top 10 patterns from a custom file
+python3 py/order_m4.py path/to/file.csv 10
+```
+
+- **Output**: 4‑value tuples and their frequencies, sorted by descending frequency
+- **Columns used**: Column 7 (mega number only)
+- **Window size**: 4 rows
+
+### order_m5.py
+Analyzes 5‑row vertical patterns in the mega column (column 7) and shows frequencies.
+
+```bash
+# Show all patterns (default file)
+python3 py/order_m5.py
+
+# Show all patterns from a custom file
+python3 py/order_m5.py path/to/file.csv
+
+# Show top 5 patterns (default file)
+python3 py/order_m5.py 5
+
+# Show top 10 patterns from a custom file
+python3 py/order_m5.py path/to/file.csv 10
+```
+
+- **Output**: 5‑value tuples and their frequencies, sorted by descending frequency
+- **Columns used**: Column 7 (mega number only)
+- **Window size**: 5 rows
+
 ### order_next.py
-Predicts the next draw using 4‑row pattern frequencies with a two‑step approach.
+Predicts the next draw using hierarchical fallback approaches for both main numbers and mega number.
 
 ```bash
 # Use default file
@@ -57,10 +183,40 @@ python3 py/order_next.py
 python3 py/order_next.py path/to/file.csv
 ```
 
-- **Step 1**: Uses 4‑row patterns to predict the next value
-- **Step 2**: "Disappears" the 4th row and uses historical 3‑row → 4th‑row mappings to predict
-- **Output**: Shows both predictions for comparison
+- **Main numbers priority**: order4 → order5 → order4 → order3 → order2 fallback hierarchy
+- **Mega number priority**: order_m5 → order_m4 → order_m3 → order_m2 fallback hierarchy
+- **Output**: Shows all prediction stages with clear fallback indicators for columns 2–6 and mega (column 7)
 - **Target**: Predicts the draw immediately after the last row in the input file
+
+### order_next_minus_one.py
+Tests prediction accuracy by excluding the last draw and predicting it.
+
+```bash
+# Use default file
+python3 py/order_next_minus_one.py
+
+# Specify a custom file
+python3 py/order_next_minus_one.py path/to/file.csv
+```
+
+- **Method**: Excludes last draw, predicts it, then compares with actual
+- **Output**: Shows predicted vs actual values with accuracy percentage
+- **Purpose**: Validates prediction model performance
+
+### all_next.py
+Runs all three prediction algorithms (order_next, kimi_next, weather_next) and displays their results side by side for comparison.
+
+```bash
+# Use default file
+python3 py/all_next.py
+
+# Specify a custom file
+python3 py/all_next.py path/to/file.csv
+```
+
+- **Algorithms**: Combines order_next, kimi_next, and weather_next
+- **Output**: Table showing all three predictions + individual accuracy tests
+- **Purpose**: Compare different prediction approaches on the same data
 
 ## CSV Format
 
@@ -74,7 +230,7 @@ draw_num;d1;d2;d3;d4;mega
 
 - Column 1: Draw Number (ignored for pattern analysis)
 - Columns 2–6: Main numbers (used for pattern analysis)
-- Column 7: Mega/extra number (ignored for pattern analysis)
+- Column 7: Mega/extra number (used for mega prediction in order_next.py, ignored by order2–order5)
 
 ## ca_sloto
 
