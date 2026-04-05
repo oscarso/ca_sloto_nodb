@@ -6,14 +6,17 @@ import shutil
 
 # Import all three prediction modules
 sys.path.insert(0, str(Path(__file__).parent))
-from order_next import order_next
+sys.path.insert(0, str(Path(__file__).parent / "oso"))
+sys.path.insert(0, str(Path(__file__).parent / "kimi"))
+sys.path.insert(0, str(Path(__file__).parent / "weather"))
+from oso_next import oso_next
 from kimi_next import kimi_next
 from weather_next import weather_next
 
 
-def all_next(csv_path: Path = None) -> None:
+def predict_all(csv_path: Path = None) -> None:
     """
-    Run all three prediction algorithms (order_next, kimi_next, weather_next)
+    Run all three prediction algorithms (oso_next, kimi_next, weather_next)
     and display their results side by side.
     """
     if csv_path is None:
@@ -25,11 +28,11 @@ def all_next(csv_path: Path = None) -> None:
     print(f"Data file: {csv_path}")
     print("=" * 70)
     
-    # Run order_next
-    print("\n[1] Running order_next...")
+    # Run oso_next
+    print("\n[1] Running oso_next...")
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
-    order_result = order_next(csv_path, run_accuracy_test=False)
+    oso_result = oso_next(csv_path, run_accuracy_test=False)
     sys.stdout = old_stdout
     
     # Run kimi_next
@@ -50,22 +53,22 @@ def all_next(csv_path: Path = None) -> None:
     print("=" * 70)
     
     # Header row
-    print(f"{'Column':<12} {'order_next':<15} {'kimi_next':<15} {'weather_next':<15}")
+    print(f"{'Column':<12} {'oso_next':<15} {'kimi_next':<15} {'weather_next':<15}")
     print("-" * 70)
     
     # Data rows for columns 1-5
     for col in range(1, 6):
-        order_val = order_result.get(col, "N/A")
+        oso_val = oso_result.get(col, "N/A")
         kimi_val = kimi_result.get(col, "N/A")
         weather_val = weather_result.get(col, "N/A")
-        print(f"{'Column ' + str(col):<12} {str(order_val):<15} {str(kimi_val):<15} {str(weather_val):<15}")
+        print(f"{'Column ' + str(col):<12} {str(oso_val):<15} {str(kimi_val):<15} {str(weather_val):<15}")
     
     # Mega row
     print("-" * 70)
-    order_mega = order_result.get(6, "N/A")
+    oso_mega = oso_result.get(6, "N/A")
     kimi_mega = kimi_result.get(6, "N/A")
     weather_mega = weather_result.get(6, "N/A")
-    print(f"{'Mega':<12} {str(order_mega):<15} {str(kimi_mega):<15} {str(weather_mega):<15}")
+    print(f"{'Mega':<12} {str(oso_mega):<15} {str(kimi_mega):<15} {str(weather_mega):<15}")
     
     print("=" * 70)
     
@@ -73,7 +76,7 @@ def all_next(csv_path: Path = None) -> None:
     print("\n" + "=" * 70)
     print("ALGORITHM CHARACTERISTICS")
     print("=" * 70)
-    print("order_next:   Pattern matching with hierarchical fallback")
+    print("oso_next:     Pattern matching with hierarchical fallback")
     print("kimi_next:    Ensemble of frequency, gap, Markov, and positional analysis")
     print("weather_next: Trend, momentum, cycle, pressure, and drift analysis")
     print("=" * 70)
@@ -84,12 +87,12 @@ def all_next(csv_path: Path = None) -> None:
     print("=" * 70)
     
     # Import minus_one functions
-    from order_next_minus_one import order_next_minus_one
+    from oso_next_minus_one import oso_next_minus_one
     from kimi_next_minus_one import kimi_next_minus_one
     from weather_next_minus_one import weather_next_minus_one
     
-    print("\n--- order_next accuracy ---")
-    order_next_minus_one(csv_path)
+    print("\n--- oso_next accuracy ---")
+    oso_next_minus_one(csv_path)
     
     print("\n--- kimi_next accuracy ---")
     kimi_next_minus_one(csv_path)
@@ -108,4 +111,4 @@ def all_next(csv_path: Path = None) -> None:
 
 if __name__ == "__main__":
     csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-    all_next(csv_path)
+    predict_all(csv_path)

@@ -325,7 +325,7 @@ def order3_fallback(csv_path: Path) -> Dict[int, int]:
     return fallback
 
 
-def order_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int, int]:
+def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int, int]:
     if csv_path is None:
         csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "data" / "dresult_test.csv"
     rows: List[List[int]] = []
@@ -475,13 +475,13 @@ def order_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[in
     # Run accuracy test (minus_one) only if not called from minus_one
     if run_accuracy_test:
         print("\n" + "=" * 50)
-        print("ORDER_NEXT_MINUS_ONE: Accuracy Test")
+        print("OSO_NEXT_MINUS_ONE: Accuracy Test")
         print("=" * 50)
         # Import here to avoid circular import issues
         import sys
         sys.path.insert(0, str(Path(__file__).parent))
-        from order_next_minus_one import order_next_minus_one
-        order_next_minus_one(csv_path)
+        from oso_next_minus_one import oso_next_minus_one
+        oso_next_minus_one(csv_path)
         print("=" * 50)
 
     return final_prediction
@@ -492,17 +492,17 @@ if __name__ == "__main__":
     
     # Run main prediction
     print("\n" + "=" * 50)
-    print("ORDER_NEXT: Forward Prediction")
+    print("OSO_NEXT: Forward Prediction")
     print("=" * 50)
-    order_next(csv_path)
+    oso_next(csv_path)
     
     # Run accuracy test (minus_one)
     print("\n" + "=" * 50)
-    print("ORDER_NEXT_MINUS_ONE: Accuracy Test")
+    print("OSO_NEXT_MINUS_ONE: Accuracy Test")
     print("=" * 50)
     # Import here to avoid circular import issues
     import sys
     sys.path.insert(0, str(Path(__file__).parent))
-    from order_next_minus_one import order_next_minus_one
-    order_next_minus_one(csv_path)
+    from oso_next_minus_one import oso_next_minus_one
+    oso_next_minus_one(csv_path)
     print("=" * 50)

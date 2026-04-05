@@ -3,12 +3,11 @@ import sys
 from pathlib import Path
 from typing import List, Dict
 
-# Import order_next function from order_next module
-sys.path.insert(0, str(Path(__file__).parent))
-from order_next import order_next
+# Import oso_next function from oso_next module
+from oso_next import oso_next
 
 
-def order_next_minus_one(csv_path: Path = None) -> None:
+def oso_next_minus_one(csv_path: Path = None) -> None:
     if csv_path is None:
         csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "data" / "dresult_test.csv"
     
@@ -56,7 +55,7 @@ def order_next_minus_one(csv_path: Path = None) -> None:
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     
-    predicted = order_next(temp_path, run_accuracy_test=False)
+    predicted = oso_next(temp_path, run_accuracy_test=False)
     
     # Restore stdout
     sys.stdout = old_stdout
@@ -100,4 +99,4 @@ def order_next_minus_one(csv_path: Path = None) -> None:
 
 if __name__ == "__main__":
     csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-    order_next_minus_one(csv_path)
+    oso_next_minus_one(csv_path)
