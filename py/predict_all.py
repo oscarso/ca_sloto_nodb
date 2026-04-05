@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Dict, List
 import io
 import shutil
+import csv
 
 # Import all three prediction modules
 sys.path.insert(0, str(Path(__file__).parent))
@@ -47,9 +48,23 @@ def predict_all(csv_path: Path = None) -> None:
     weather_result = weather_next(csv_path, run_accuracy_test=False)
     sys.stdout = old_stdout
     
+    # Read the last draw number from CSV
+    last_draw_num = None
+    with csv_path.open("r", newline="") as f:
+        sample = f.read(2048)
+        f.seek(0)
+        delimiter = ";" if ";" in sample and "," not in sample else ","
+        reader = csv.reader(f, delimiter=delimiter)
+        for raw in reader:
+            if not raw or raw[0].strip().lower() == "draw_num":
+                continue
+            last_draw_num = int(raw[0])
+    
+    predicted_draw_num = last_draw_num + 1 if last_draw_num else "Unknown"
+    
     # Display results in table format
     print("\n" + "=" * 70)
-    print("PREDICTION RESULTS")
+    print(f"PREDICTION RESULTS (for Draw #{predicted_draw_num})")
     print("=" * 70)
     
     # Header row
