@@ -203,6 +203,65 @@ python3 py/order_next_minus_one.py path/to/file.csv
 - **Output**: Shows predicted vs actual values with accuracy percentage
 - **Purpose**: Validates prediction model performance
 
+### kimi_next.py
+Ensemble prediction algorithm combining frequency analysis, gap analysis, Markov transitions, and positional bias.
+
+```bash
+# Use default file
+python3 py/kimi_next.py
+
+# Specify a custom file
+python3 py/kimi_next.py path/to/file.csv
+```
+
+- **Components**:
+  - **Frequency**: Most common numbers per column
+  - **Gap analysis**: Time since last appearance
+  - **Markov chains**: Transition probabilities from recent values
+  - **Positional bias**: Column-specific distributions
+- **Output**: Shows analysis per column with confidence scores
+- **Includes**: Automatically runs `kimi_next_minus_one` for accuracy test
+
+### kimi_next_minus_one.py
+Tests kimi_next prediction accuracy by excluding the last draw.
+
+```bash
+python3 py/kimi_next_minus_one.py
+```
+
+- **Method**: Excludes last draw, runs kimi_next, compares prediction with actual
+- **Output**: Shows predicted vs actual with accuracy percentage
+
+### weather_next.py
+"Weather-like" prediction using trend, momentum, cycle, pressure, and drift analysis.
+
+```bash
+# Use default file
+python3 py/weather_next.py
+
+# Specify a custom file
+python3 py/weather_next.py path/to/file.csv
+```
+
+- **Metrics**:
+  - **Trend**: Direction of movement (rising/falling/stable)
+  - **Momentum**: Volatility/speed of change
+  - **Cycles**: Repeating patterns every N draws
+  - **Pressure**: Clustering tendency around recent average
+  - **Drift**: Short-term vs long-term divergence
+- **Output**: Shows weather analysis per column with prediction scores
+- **Includes**: Automatically runs `weather_next_minus_one` for accuracy test
+
+### weather_next_minus_one.py
+Tests weather_next prediction accuracy by excluding the last draw.
+
+```bash
+python3 py/weather_next_minus_one.py
+```
+
+- **Method**: Excludes last draw, runs weather_next, compares prediction with actual
+- **Output**: Shows predicted vs actual with accuracy percentage
+
 ### all_next.py
 Runs all three prediction algorithms (order_next, kimi_next, weather_next) and displays their results side by side for comparison.
 
