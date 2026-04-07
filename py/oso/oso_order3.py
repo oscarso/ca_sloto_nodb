@@ -35,21 +35,49 @@ def order3(csv_path: Path = None, top_n: int = None) -> Counter:
             c = rows[i+2][col]
             patterns.append((a, b, c))
 
+    # Build cross-column permutation patterns: all combinations across 3 consecutive rows
+    cross_patterns: List[Tuple[int, int, int]] = []
+    for i in range(len(rows) - 2):
+        for col_a in range(1, 6):  # all values in row i
+            for col_b in range(1, 6):  # all values in row i+1
+                for col_c in range(1, 6):  # all values in row i+2
+                    a = rows[i][col_a]
+                    b = rows[i+1][col_b]
+                    c = rows[i+2][col_c]
+                    cross_patterns.append((a, b, c))
+
     freq = Counter(patterns)
+    cross_freq = Counter(cross_patterns)
+
+    # Combine both pattern types (no prefix distinction)
+    combined: Dict[Tuple, int] = {}
+    for pat, count in freq.items():
+        combined[pat] = combined.get(pat, 0) + count
+    for pat, count in cross_freq.items():
+        combined[pat] = combined.get(pat, 0) + count
 
     # Determine how many results to show
     if top_n is None:
         # Try to read top_n from command line args
         top_n = int(sys.argv[2]) if len(sys.argv) > 2 else None
 
-    # Print patterns sorted by descending frequency
-    sorted_items = sorted(freq.items(), key=lambda kv: kv[1], reverse=True)
+    # Print combined patterns sorted by descending frequency
+    print("=== PATTERNS (merged vertical + cross-column) ===")
+    sorted_items = sorted(combined.items(), key=lambda kv: kv[1], reverse=True)
+    
+    # Filter to top N frequency groups if requested
     if top_n is not None:
-        sorted_items = sorted_items[:top_n]
+        # Get unique frequency values, sorted descending
+        unique_freqs = sorted(set(combined.values()), reverse=True)
+        # Take top N frequency thresholds
+        freq_thresholds = unique_freqs[:top_n]
+        # Filter items whose count is in the top N frequencies
+        sorted_items = [(pat, cnt) for pat, cnt in sorted_items if cnt in freq_thresholds]
+    
     for pat, count in sorted_items:
         print(f"{pat}={count}")
 
-    return freq
+    return freq, cross_freq
 
 
 if __name__ == "__main__":

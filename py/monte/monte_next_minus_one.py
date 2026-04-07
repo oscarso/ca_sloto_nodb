@@ -3,15 +3,15 @@ import sys
 from pathlib import Path
 from typing import List, Dict
 
-# Import oso_next function from oso_next module
-from oso_next import oso_next
 
-
-def oso_next_minus_one(csv_path: Path = None, top_n: int = None) -> None:
+def monte_next_minus_one(csv_path: Path = None, simulations: int = None) -> None:
+    """
+    Tests monte_next prediction accuracy by excluding the last draw.
+    """
     if csv_path is None:
         csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "data" / "dresult_test.csv"
-    if top_n is None:
-        top_n = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    if simulations is None:
+        simulations = int(sys.argv[2]) if len(sys.argv) > 2 else 10000
     
     # Read all rows
     all_rows: List[List[int]] = []
@@ -41,7 +41,7 @@ def oso_next_minus_one(csv_path: Path = None, top_n: int = None) -> None:
     # Create temporary file without the last row (in data/tmp folder)
     tmp_dir = csv_path.parent / "tmp"
     tmp_dir.mkdir(exist_ok=True)
-    temp_path = tmp_dir / f"{csv_path.stem}_temp.csv"
+    temp_path = tmp_dir / f"{csv_path.stem}_monte_temp.csv"
     with temp_path.open("w", newline="") as f:
         writer = csv.writer(f, delimiter=delimiter)
         # Write header if it existed
@@ -51,13 +51,15 @@ def oso_next_minus_one(csv_path: Path = None, top_n: int = None) -> None:
         for row in all_rows[:-1]:
             writer.writerow(row)
 
-    # Predict using order_next on data without the last row
+    # Predict using monte_next on data without the last row
     # Suppress output by redirecting stdout temporarily
     import io
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     
-    predicted = oso_next(temp_path, top_n=top_n, run_accuracy_test=False)
+    sys.path.insert(0, str(Path(__file__).parent))
+    from monte_next import monte_next
+    predicted = monte_next(temp_path, simulations=simulations, run_accuracy_test=False)
     
     # Restore stdout
     sys.stdout = old_stdout
@@ -101,5 +103,5 @@ def oso_next_minus_one(csv_path: Path = None, top_n: int = None) -> None:
 
 if __name__ == "__main__":
     csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-    top_n = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    oso_next_minus_one(csv_path, top_n)
+    simulations = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    monte_next_minus_one(csv_path, simulations)

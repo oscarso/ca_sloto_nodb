@@ -4,6 +4,17 @@ from pathlib import Path
 from collections import Counter
 from typing import List, Tuple, Dict
 
+# Import order scripts
+sys.path.insert(0, str(Path(__file__).parent))
+from oso_order2 import order2
+from oso_order3 import order3
+from oso_order4 import order4
+from oso_order5 import order5
+from oso_order_m2 import order_m2
+from oso_order_m3 import order_m3
+from oso_order_m4 import order_m4
+from oso_order_m5 import order_m5
+
 
 def order_m5_fallback(csv_path: Path) -> int:
     """Get order_m5 prediction for mega number (column 7) as primary"""
@@ -325,9 +336,11 @@ def order3_fallback(csv_path: Path) -> Dict[int, int]:
     return fallback
 
 
-def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int, int]:
+def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool = True) -> Dict[int, int]:
     if csv_path is None:
         csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "data" / "dresult_test.csv"
+    if top_n is None:
+        top_n = int(sys.argv[2]) if len(sys.argv) > 2 else None
     rows: List[List[int]] = []
     p = Path(csv_path)
 
@@ -400,6 +413,8 @@ def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int,
         print(f"Column {col_idx+1}: {val}")
 
     # Fill None values with order5 fallback predictions
+    print("\n--- order5 fallback ---")
+    freq5, _ = order5(p, top_n)
     fallback5 = order5_fallback(p)
     stage1_prediction = {}
     print("\nStage 1 prediction (with order5 fallback for None values):")
@@ -412,6 +427,8 @@ def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int,
             print(f"Column {col_idx+1}: {val}")
 
     # Fill remaining None values with order4 fallback predictions
+    print("\n--- order4 fallback ---")
+    freq4, _ = order4(p, top_n)
     fallback4 = order4_fallback(p)
     stage2_prediction = {}
     print("\nStage 2 prediction (with order4 fallback for remaining None values):")
@@ -424,6 +441,8 @@ def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int,
             print(f"Column {col_idx+1}: {val}")
 
     # Fill remaining None values with order3 fallback predictions
+    print("\n--- order3 fallback ---")
+    freq3, _ = order3(p, top_n)
     fallback3 = order3_fallback(p)
     stage3_prediction = {}
     print("\nStage 3 prediction (with order3 fallback for remaining None values):")
@@ -436,6 +455,8 @@ def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int,
             print(f"Column {col_idx+1}: {val}")
 
     # Fill remaining None values with order2 fallback predictions
+    print("\n--- order2 fallback ---")
+    freq2, _ = order2(p, top_n)
     fallback2 = order2_fallback(p)
     final_prediction = {}
     print("\nFinal prediction (with order2 fallback for remaining None values):")
@@ -448,18 +469,26 @@ def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int,
             print(f"Column {col_idx+1}: {val}")
 
     # Predict mega number using order_m5 -> order_m4 -> order_m3 -> order_m2 fallback chain
+    print("\n--- order_m5 fallback ---")
+    freq_m5 = order_m5(p, top_n)
     mega_pred = order_m5_fallback(p)
     if mega_pred is not None:
         print(f"\nMega (Column 7): {mega_pred} (from order_m5)")
     else:
+        print("\n--- order_m4 fallback ---")
+        freq_m4 = order_m4(p, top_n)
         mega_pred = order_m4_fallback(p)
         if mega_pred is not None:
             print(f"\nMega (Column 7): {mega_pred} (from order_m4 fallback)")
         else:
+            print("\n--- order_m3 fallback ---")
+            freq_m3 = order_m3(p, top_n)
             mega_pred = order_m3_fallback(p)
             if mega_pred is not None:
                 print(f"\nMega (Column 7): {mega_pred} (from order_m3 fallback)")
             else:
+                print("\n--- order_m2 fallback ---")
+                freq_m2 = order_m2(p, top_n)
                 mega_pred = order_m2_fallback(p)
                 print(f"\nMega (Column 7): {mega_pred} (from order_m2 fallback)")
     final_prediction[6] = mega_pred
@@ -471,6 +500,48 @@ def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int,
         print(f"  Column {col}: {final_prediction[col]}")
     print(f"  Mega: {final_prediction[6]}")
     print("=" * 50)
+
+    # If top_n was specified, show prediction based on top patterns
+    if top_n is not None:
+        print("\n" + "=" * 50)
+        print(f"PREDICTION BASED ON TOP {top_n} PATTERN GROUPS")
+        print("=" * 50)
+        
+        # Show top patterns used for each column's prediction
+        for col in range(1, 6):
+            col_patterns = []
+            # Check order5 patterns for this column
+            for (a, b, c, d, e), cnt in freq5.items():
+                if cnt >= min(sorted(set(freq5.values()), reverse=True)[:top_n] if freq5 else [0]):
+                    # Pattern from top groups - check if it ends with predicted value
+                    if final_prediction.get(col) is not None:
+                        col_patterns.append(f"order5:{(a,b,c,d,e)}={cnt}")
+            
+            # Check order4 patterns
+            for (a, b, c, d), cnt in freq4.items():
+                if cnt >= min(sorted(set(freq4.values()), reverse=True)[:top_n] if freq4 else [0]):
+                    if final_prediction.get(col) is not None:
+                        col_patterns.append(f"order4:{(a,b,c,d)}={cnt}")
+            
+            # Check order3 patterns  
+            for (a, b, c), cnt in freq3.items():
+                if cnt >= min(sorted(set(freq3.values()), reverse=True)[:top_n] if freq3 else [0]):
+                    if final_prediction.get(col) is not None:
+                        col_patterns.append(f"order3:{(a,b,c)}={cnt}")
+            
+            # Check order2 patterns
+            for (a, b), cnt in freq2.items():
+                if cnt >= min(sorted(set(freq2.values()), reverse=True)[:top_n] if freq2 else [0]):
+                    if final_prediction.get(col) is not None:
+                        col_patterns.append(f"order2:{(a,b)}={cnt}")
+            
+            pred_val = final_prediction.get(col, "N/A")
+            print(f"  Column {col}: {pred_val}")
+            if col_patterns[:3]:  # Show up to 3 relevant patterns
+                print(f"    Top patterns: {', '.join(col_patterns[:3])}")
+        
+        print(f"  Mega: {final_prediction[6]}")
+        print("=" * 50)
 
     # Run accuracy test (minus_one) only if not called from minus_one
     if run_accuracy_test:
@@ -489,12 +560,13 @@ def oso_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int,
 
 if __name__ == "__main__":
     csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else None
+    top_n = int(sys.argv[2]) if len(sys.argv) > 2 else None
     
     # Run main prediction
     print("\n" + "=" * 50)
     print("OSO_NEXT: Forward Prediction")
     print("=" * 50)
-    oso_next(csv_path)
+    oso_next(csv_path, top_n)
     
     # Run accuracy test (minus_one)
     print("\n" + "=" * 50)
