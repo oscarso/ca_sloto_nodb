@@ -553,12 +553,21 @@ def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool =
         if source[col] is None and final_prediction.get(col) is not None:
             source[col] = f"4-row pattern (via disappear-3-row heuristic)"
     
+    # Determine if prediction is "weak" (mostly order2 fallback)
+    order2_count = sum(1 for col in range(1, 6) if source[col] and "order2" in source[col])
+    is_weak = order2_count >= 3
+    final_prediction["_source"] = dict(source)
+    final_prediction["_weak"] = is_weak
+    
     print("\n" + "=" * 50)
     print("OSO_NEXT - FINAL PREDICTION (with source)")
     print("=" * 50)
     for col in range(1, 6):
         print(f"  Column {col}: {final_prediction[col]}  <- {source[col]}")
     print(f"  Mega:     {final_prediction[6]}  <- {source[6]}")
+    if is_weak:
+        print(f"\n  [!] WEAK SIGNAL: {order2_count}/5 columns from order2 fallback")
+        print(f"      (oso_next will be suppressed from the comparison table)")
     print("=" * 50)
 
     # If top_n was specified, show prediction based on top patterns

@@ -11,10 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent / "oso"))
 sys.path.insert(0, str(Path(__file__).parent / "kimi"))
 sys.path.insert(0, str(Path(__file__).parent / "weather"))
 sys.path.insert(0, str(Path(__file__).parent / "monte"))
+sys.path.insert(0, str(Path(__file__).parent / "exclude"))
 from oso_next import oso_next
 from kimi_next import kimi_next
 from weather_next import weather_next
 from monte_next import monte_next
+from exclude_next import exclude_next
 
 
 def predict_all(csv_path: Path = None, top_n: int = None, simulations: int = None) -> None:
@@ -90,11 +92,27 @@ def predict_all(csv_path: Path = None, top_n: int = None, simulations: int = Non
     monte_result, monte_detail, monte_final = run_capture(monte_next, csv_path, simulations=simulations, run_accuracy_test=False)
     print(monte_detail)
     
+    print("\n" + "=" * 70)
+    print("[5] Running exclude_next (ensemble of all algorithms)")
+    print("=" * 70)
+    exclude_result, exclude_detail, exclude_final = run_capture(
+        exclude_next, csv_path, top_n=top_n, simulations=simulations, run_accuracy_test=False
+    )
+    print(exclude_detail)
+    
+    oso_weak = bool(oso_result.get("_weak"))
+    
     # Show all FINAL PREDICTIONs grouped together
     print("\n" + "#" * 70)
     print("# ALL FINAL PREDICTIONS")
     print("#" * 70)
-    for block in (oso_final, kimi_final, weather_final, monte_final):
+    blocks = []
+    if not oso_weak:
+        blocks.append(oso_final)
+    else:
+        print("\n[oso_next suppressed: weak signal (mostly order2 fallback)]")
+    blocks.extend([kimi_final, weather_final, monte_final, exclude_final])
+    for block in blocks:
         if block:
             print(block)
     
@@ -117,9 +135,12 @@ def predict_all(csv_path: Path = None, top_n: int = None, simulations: int = Non
     print(f"PREDICTION RESULTS (for Draw #{predicted_draw_num})")
     print("=" * 70)
     
-    # Header row
-    print(f"{'Column':<12} {'oso_next':<12} {'kimi_next':<12} {'weather_next':<12} {'monte_next':<12}")
-    print("-" * 70)
+    # Header row (suppress oso if weak)
+    if oso_weak:
+        print(f"{'Column':<12} {'kimi_next':<12} {'weather_next':<12} {'monte_next':<12} {'exclude':<12}")
+    else:
+        print(f"{'Column':<12} {'oso_next':<12} {'kimi_next':<12} {'weather_next':<12} {'monte_next':<12} {'exclude':<12}")
+    print("-" * 84)
     
     # Data rows for columns 1-5
     for col in range(1, 6):
@@ -127,15 +148,24 @@ def predict_all(csv_path: Path = None, top_n: int = None, simulations: int = Non
         kimi_val = kimi_result.get(col, "N/A")
         weather_val = weather_result.get(col, "N/A")
         monte_val = monte_result.get(col, "N/A")
-        print(f"{'Column ' + str(col):<12} {str(oso_val):<12} {str(kimi_val):<12} {str(weather_val):<12} {str(monte_val):<12}")
+        exclude_val = exclude_result.get(col, "N/A")
+        label = f"Column {col}"
+        if oso_weak:
+            print(f"{label:<12} {str(kimi_val):<12} {str(weather_val):<12} {str(monte_val):<12} {str(exclude_val):<12}")
+        else:
+            print(f"{label:<12} {str(oso_val):<12} {str(kimi_val):<12} {str(weather_val):<12} {str(monte_val):<12} {str(exclude_val):<12}")
     
     # Mega row
-    print("-" * 70)
+    print("-" * 84)
     oso_mega = oso_result.get(6, "N/A")
     kimi_mega = kimi_result.get(6, "N/A")
     weather_mega = weather_result.get(6, "N/A")
     monte_mega = monte_result.get(6, "N/A")
-    print(f"{'Mega':<12} {str(oso_mega):<12} {str(kimi_mega):<12} {str(weather_mega):<12} {str(monte_mega):<12}")
+    exclude_mega = exclude_result.get(6, "N/A")
+    if oso_weak:
+        print(f"{'Mega':<12} {str(kimi_mega):<12} {str(weather_mega):<12} {str(monte_mega):<12} {str(exclude_mega):<12}")
+    else:
+        print(f"{'Mega':<12} {str(oso_mega):<12} {str(kimi_mega):<12} {str(weather_mega):<12} {str(monte_mega):<12} {str(exclude_mega):<12}")
     
     print("=" * 70)
     
@@ -147,6 +177,7 @@ def predict_all(csv_path: Path = None, top_n: int = None, simulations: int = Non
     print("kimi_next:    Ensemble of frequency, gap, Markov, and positional analysis")
     print("weather_next: Trend, momentum, cycle, pressure, and drift analysis")
     print("monte_next:   Monte Carlo simulation with statistical sampling")
+    print("exclude_next: Voting ensemble combining all above (oso excluded if weak)")
     print("=" * 70)
     
     # Run accuracy tests for all three
@@ -159,9 +190,13 @@ def predict_all(csv_path: Path = None, top_n: int = None, simulations: int = Non
     from kimi_next_minus_one import kimi_next_minus_one
     from weather_next_minus_one import weather_next_minus_one
     from monte_next_minus_one import monte_next_minus_one
+    from exclude_next_minus_one import exclude_next_minus_one
     
-    print("\n--- oso_next accuracy ---")
-    oso_next_minus_one(csv_path, top_n=top_n)
+    if not oso_weak:
+        print("\n--- oso_next accuracy ---")
+        oso_next_minus_one(csv_path, top_n=top_n)
+    else:
+        print("\n--- oso_next accuracy (skipped: weak signal) ---")
     
     print("\n--- kimi_next accuracy ---")
     kimi_next_minus_one(csv_path)
@@ -171,6 +206,9 @@ def predict_all(csv_path: Path = None, top_n: int = None, simulations: int = Non
     
     print("\n--- monte_next accuracy ---")
     monte_next_minus_one(csv_path, simulations)
+    
+    print("\n--- exclude_next accuracy ---")
+    exclude_next_minus_one(csv_path, top_n=top_n, simulations=simulations)
     
     # Clean up temp files and folder
     tmp_dir = csv_path.parent / "tmp"
