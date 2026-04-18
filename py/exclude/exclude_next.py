@@ -102,15 +102,26 @@ def exclude_next(
               f"{str(weather_pred.get(col, '-')):<9} "
               f"{str(monte_pred.get(col, '-')):<6}")
 
-    # Build exclusion set per column (values predicted by other algos)
-    excluded: Dict[int, set] = {}
-    for col in range(1, 7):
-        s = set()
-        for pred in (oso_pred, kimi_pred, weather_pred, monte_pred):
-            v = pred.get(col)
+    # Build GLOBAL exclusion sets:
+    #  - main_excluded: union of all values from columns 1-5 across all 4 algorithms
+    #    (exclude's columns 1-5 must not match ANY of these)
+    #  - mega_excluded: union of mega values across all 4 algorithms
+    main_excluded: set = set()
+    mega_excluded: set = set()
+    for pred in (oso_pred, kimi_pred, weather_pred, monte_pred):
+        for c in range(1, 6):
+            v = pred.get(c)
             if isinstance(v, int):
-                s.add(v)
-        excluded[col] = s
+                main_excluded.add(v)
+        mv = pred.get(6)
+        if isinstance(mv, int):
+            mega_excluded.add(mv)
+
+    excluded: Dict[int, set] = {c: main_excluded for c in range(1, 6)}
+    excluded[6] = mega_excluded
+
+    print(f"\nMain-numbers exclusion set (any of these disallowed for Cols 1-5): {sorted(main_excluded)}")
+    print(f"Mega exclusion set: {sorted(mega_excluded)}")
 
     n_draws = len(rows)
     final: Dict[int, int] = {}
@@ -162,7 +173,7 @@ def exclude_next(
         final[col] = v
         source[col] = (
             f"deficit+staleness score={score:.3f} "
-            f"(count={cnt}, stale={stale} draws, rank#{rank}, excluded={sorted(excluded[col])})"
+            f"(count={cnt}, stale={stale} draws, rank#{rank}, {len(excluded[col])} values excluded)"
         )
 
     # Resolve duplicates among columns 1-5
