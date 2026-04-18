@@ -146,36 +146,35 @@ def ensemble_weather_score(
     """
     Calculate ensemble weather score for a candidate number.
     """
-    score = 0.0
+    distance_from_last = candidate - last_value
     
     # 1. Trend component (weight: 0.25)
-    # If trend is positive, favor higher numbers, negative favors lower
-    distance_from_last = candidate - last_value
     trend_alignment = 1 - abs(distance_from_last / 20 - trend)
-    score += 0.25 * max(0, trend_alignment)
+    trend_comp = 0.25 * max(0, trend_alignment)
     
     # 2. Momentum component (weight: 0.20)
-    # High momentum means larger jumps are more likely
-    expected_jump = momentum * 15  # Max jump based on momentum
+    expected_jump = momentum * 15
     jump_diff = abs(abs(distance_from_last) - expected_jump)
-    momentum_score = 1 - min(jump_diff / 20, 1)
-    score += 0.20 * momentum_score
+    momentum_comp = 0.20 * (1 - min(jump_diff / 20, 1))
     
     # 3. Cycle component (weight: 0.25)
-    # If we detected a cycle, predict the value from one cycle ago
-    cycle_score = pressure.get(candidate, 0)
-    score += 0.25 * cycle_score
+    cycle_comp = 0.25 * pressure.get(candidate, 0)
     
     # 4. Pressure component (weight: 0.20)
-    pressure_score = pressure.get(candidate, 0)
-    score += 0.20 * pressure_score
+    pressure_comp = 0.20 * pressure.get(candidate, 0)
     
     # 5. Drift component (weight: 0.10)
-    # Drift indicates acceleration/deceleration
     drift_score = 1 - abs((candidate - last_value) / 20 - drift)
-    score += 0.10 * max(0, drift_score)
+    drift_comp = 0.10 * max(0, drift_score)
     
-    return score
+    total = trend_comp + momentum_comp + cycle_comp + pressure_comp + drift_comp
+    return total, {
+        "trend": trend_comp,
+        "momentum": momentum_comp,
+        "cycle": cycle_comp,
+        "pressure": pressure_comp,
+        "drift": drift_comp,
+    }
 
 
 def weather_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[int, int]:
@@ -197,6 +196,9 @@ def weather_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[
         return {}
     
     predictions = {}
+    col_ranked_candidates = {}  # Store ranked candidates for duplicate resolution
+    source = {}
+    col_components = {}
     
     print("=" * 50)
     print("WEATHER NEXT - Atmospheric Pattern Prediction")
@@ -225,12 +227,14 @@ def weather_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[
         candidates = list(range(1, 48))
         scores = []
         
+        candidate_components = {}
         for candidate in candidates:
-            score = ensemble_weather_score(
+            score, components = ensemble_weather_score(
                 candidate, last_value, trend, momentum,
                 cycle_len, cycle_conf, pressure, drift
             )
             scores.append((candidate, score))
+            candidate_components[candidate] = components
         
         # Sort and pick best
         scores.sort(key=lambda x: x[1], reverse=True)
@@ -238,9 +242,15 @@ def weather_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[
         best_score = scores[0][1]
         
         predictions[col] = best_candidate
+        col_ranked_candidates[col] = [c for c, _ in scores]
+        col_components[col] = candidate_components
         
-        print(f"  Top 5 candidates: {scores[:5]}")
-        print(f"  -> PREDICTED: {best_candidate} (score: {best_score:.3f})")
+        best_comps = candidate_components[best_candidate]
+        dominant = max(best_comps.items(), key=lambda kv: kv[1])
+        source[col] = f"weather score={best_score:.3f}, dominant={dominant[0]} ({dominant[1]:.3f})"
+        
+        print(f"  Top 5 candidates: {[(c, round(s,3)) for c,s in scores[:5]]}")
+        print(f"  -> PREDICTED: {best_candidate} (score: {best_score:.3f}, components: {best_comps})")
     
     # Analyze mega number (column 7, index 6)
     print(f"\n[Mega Number Weather Analysis]")
@@ -263,29 +273,66 @@ def weather_next(csv_path: Path = None, run_accuracy_test: bool = True) -> Dict[
     mega_candidates = list(range(1, 28))
     mega_scores = []
     
+    mega_candidate_components = {}
     for candidate in mega_candidates:
-        score = ensemble_weather_score(
+        score, components = ensemble_weather_score(
             candidate, last_mega, trend_mega, momentum_mega,
             cycle_len_mega, cycle_conf_mega, pressure_mega, drift_mega
         )
         mega_scores.append((candidate, score))
+        mega_candidate_components[candidate] = components
     
     mega_scores.sort(key=lambda x: x[1], reverse=True)
     best_mega = mega_scores[0][0]
     best_mega_score = mega_scores[0][1]
+    best_mega_comps = mega_candidate_components[best_mega]
+    dominant_mega = max(best_mega_comps.items(), key=lambda kv: kv[1])
+    source[6] = f"weather score={best_mega_score:.3f}, dominant={dominant_mega[0]} ({dominant_mega[1]:.3f})"
     
     predictions[6] = best_mega
     
     print(f"  Top 5 candidates: {mega_scores[:5]}")
     print(f"  -> PREDICTED: {best_mega} (score: {best_mega_score:.3f})")
     
+    # Resolve duplicates: lottery rule requires columns 1-5 to have unique numbers
+    print("\n--- Duplicate Resolution ---")
+    max_iterations = 20
+    iteration = 0
+    while iteration < max_iterations:
+        # Find duplicates among columns 1-5
+        seen = {}
+        duplicates = []
+        for col in range(1, 6):
+            val = predictions[col]
+            if val in seen:
+                duplicates.append(col)
+            else:
+                seen[val] = col
+        
+        if not duplicates:
+            break
+        
+        # Replace duplicates with next-best candidate by weather score
+        for col in duplicates:
+            current_val = predictions[col]
+            used_values = set(predictions[c] for c in range(1, 6) if c != col)
+            for candidate in col_ranked_candidates[col]:
+                if candidate not in used_values and candidate != current_val:
+                    print(f"Column {col}: {current_val} -> {candidate} (duplicate resolution)")
+                    predictions[col] = candidate
+                    new_comps = col_components[col][candidate]
+                    new_dom = max(new_comps.items(), key=lambda kv: kv[1])
+                    source[col] = f"duplicate resolution, dominant={new_dom[0]} ({new_dom[1]:.3f})"
+                    break
+        iteration += 1
+    
     # Final summary
     print("\n" + "=" * 50)
-    print("FINAL WEATHER PREDICTION")
+    print("WEATHER_NEXT - FINAL PREDICTION (with source)")
     print("=" * 50)
     for col in range(1, 6):
-        print(f"  Column {col}: {predictions[col]}")
-    print(f"  Mega: {predictions[6]}")
+        print(f"  Column {col}: {predictions[col]}  <- {source[col]}")
+    print(f"  Mega:     {predictions[6]}  <- {source[6]}")
     print("=" * 50)
     
     # Run accuracy test (minus_one) only if not called from minus_one

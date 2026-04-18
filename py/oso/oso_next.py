@@ -377,6 +377,9 @@ def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool =
         return {}
     last_four = rows[-4:]
 
+    # Track source of each prediction
+    source = {col: None for col in range(1, 7)}
+    
     # First predict using the full 4-row pattern
     pred_full = {}
     for col in range(1, 6):
@@ -401,6 +404,7 @@ def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool =
             # Choose the most common fourth value
             most_common = max(candidates, key=lambda x: three_to_four[x])
             pred_disappear[col] = most_common[3]
+            source[col] = f"3-row pattern {cur_three} (freq={three_to_four[most_common]})"
         else:
             pred_disappear[col] = None
 
@@ -421,6 +425,7 @@ def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool =
     for col_idx, val in pred_disappear.items():
         if val is None and fallback5.get(col_idx) is not None:
             stage1_prediction[col_idx] = fallback5[col_idx]
+            source[col_idx] = "order5 fallback (5-row pattern)"
             print(f"Column {col_idx+1}: {stage1_prediction[col_idx]} (from order5 fallback)")
         else:
             stage1_prediction[col_idx] = val
@@ -435,6 +440,7 @@ def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool =
     for col_idx, val in stage1_prediction.items():
         if val is None and fallback4.get(col_idx) is not None:
             stage2_prediction[col_idx] = fallback4[col_idx]
+            source[col_idx] = "order4 fallback (4-row pattern)"
             print(f"Column {col_idx+1}: {stage2_prediction[col_idx]} (from order4 fallback)")
         else:
             stage2_prediction[col_idx] = val
@@ -449,6 +455,7 @@ def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool =
     for col_idx, val in stage2_prediction.items():
         if val is None and fallback3.get(col_idx) is not None:
             stage3_prediction[col_idx] = fallback3[col_idx]
+            source[col_idx] = "order3 fallback (3-row pattern)"
             print(f"Column {col_idx+1}: {stage3_prediction[col_idx]} (from order3 fallback)")
         else:
             stage3_prediction[col_idx] = val
@@ -463,6 +470,7 @@ def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool =
     for col_idx, val in stage3_prediction.items():
         if val is None and fallback2.get(col_idx) is not None:
             final_prediction[col_idx] = fallback2[col_idx]
+            source[col_idx] = "order2 fallback (2-row pattern)"
             print(f"Column {col_idx+1}: {final_prediction[col_idx]} (from order2 fallback)")
         else:
             final_prediction[col_idx] = val
@@ -473,32 +481,84 @@ def oso_next(csv_path: Path = None, top_n: int = None, run_accuracy_test: bool =
     freq_m5 = order_m5(p, top_n)
     mega_pred = order_m5_fallback(p)
     if mega_pred is not None:
+        source[6] = "order_m5 (5-row mega pattern)"
         print(f"\nMega (Column 7): {mega_pred} (from order_m5)")
     else:
         print("\n--- order_m4 fallback ---")
         freq_m4 = order_m4(p, top_n)
         mega_pred = order_m4_fallback(p)
         if mega_pred is not None:
+            source[6] = "order_m4 fallback (4-row mega pattern)"
             print(f"\nMega (Column 7): {mega_pred} (from order_m4 fallback)")
         else:
             print("\n--- order_m3 fallback ---")
             freq_m3 = order_m3(p, top_n)
             mega_pred = order_m3_fallback(p)
             if mega_pred is not None:
+                source[6] = "order_m3 fallback (3-row mega pattern)"
                 print(f"\nMega (Column 7): {mega_pred} (from order_m3 fallback)")
             else:
                 print("\n--- order_m2 fallback ---")
                 freq_m2 = order_m2(p, top_n)
                 mega_pred = order_m2_fallback(p)
+                source[6] = "order_m2 fallback (2-row mega pattern)"
                 print(f"\nMega (Column 7): {mega_pred} (from order_m2 fallback)")
     final_prediction[6] = mega_pred
 
+    # Resolve duplicates: lottery rule requires columns 1-5 to have unique numbers
+    print("\n--- Duplicate Resolution ---")
+    
+    # Build per-column ranked candidates (by historical frequency in that column)
+    col_candidates: Dict[int, List[int]] = {}
+    for col in range(1, 6):
+        col_freq = Counter()
+        for row in rows:
+            col_freq[row[col]] += 1
+        # Sort by frequency descending
+        col_candidates[col] = [val for val, _ in col_freq.most_common()]
+    
+    # Detect and resolve duplicates
+    max_iterations = 20
+    iteration = 0
+    while iteration < max_iterations:
+        # Find duplicates among columns 1-5
+        values = [final_prediction[c] for c in range(1, 6)]
+        seen = {}
+        duplicates = []
+        for col in range(1, 6):
+            val = final_prediction[col]
+            if val in seen:
+                duplicates.append(col)  # Later column gets replaced
+            else:
+                seen[val] = col
+        
+        if not duplicates:
+            break
+        
+        # Replace duplicates with next-best candidate for that column
+        for col in duplicates:
+            current_val = final_prediction[col]
+            used_values = set(final_prediction[c] for c in range(1, 6) if c != col)
+            # Pick next candidate not already used
+            for candidate in col_candidates[col]:
+                if candidate not in used_values and candidate != current_val:
+                    print(f"Column {col}: {current_val} -> {candidate} (duplicate resolution)")
+                    final_prediction[col] = candidate
+                    source[col] = "duplicate resolution (historical frequency)"
+                    break
+        iteration += 1
+    
+    # Set 4-row source for columns not yet sourced (from pred_full which was copied to pred_disappear earlier)
+    for col in range(1, 6):
+        if source[col] is None and final_prediction.get(col) is not None:
+            source[col] = f"4-row pattern (via disappear-3-row heuristic)"
+    
     print("\n" + "=" * 50)
-    print("FINAL PREDICTION")
+    print("OSO_NEXT - FINAL PREDICTION (with source)")
     print("=" * 50)
     for col in range(1, 6):
-        print(f"  Column {col}: {final_prediction[col]}")
-    print(f"  Mega: {final_prediction[6]}")
+        print(f"  Column {col}: {final_prediction[col]}  <- {source[col]}")
+    print(f"  Mega:     {final_prediction[6]}  <- {source[6]}")
     print("=" * 50)
 
     # If top_n was specified, show prediction based on top patterns

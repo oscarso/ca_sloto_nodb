@@ -154,6 +154,7 @@ def monte_next(csv_path: Path = None, simulations: int = 10000, run_accuracy_tes
     # Extract predictions (most frequent in simulations)
     prediction = {}
     confidence = {}
+    source = {}
     
     print("\n--- Simulation Results ---")
     print("Column predictions based on frequency across all simulations:")
@@ -162,11 +163,13 @@ def monte_next(csv_path: Path = None, simulations: int = 10000, run_accuracy_tes
         most_common = simulation_results[col].most_common(1)[0]
         prediction[col] = most_common[0]
         confidence[col] = most_common[1] / simulations * 100
+        source[col] = f"Monte Carlo ({simulations:,} sims, confidence={confidence[col]:.1f}%, hits={most_common[1]})"
         print(f"  Column {col}: {prediction[col]} (confidence: {confidence[col]:.1f}%)")
     
     mega_common = simulation_results[6].most_common(1)[0]
     prediction[6] = mega_common[0]
     confidence[6] = mega_common[1] / simulations * 100
+    source[6] = f"Monte Carlo ({simulations:,} sims, confidence={confidence[6]:.1f}%, hits={mega_common[1]})"
     print(f"  Mega: {prediction[6]} (confidence: {confidence[6]:.1f}%)")
     
     # Show top 3 alternatives for each column
@@ -177,12 +180,45 @@ def monte_next(csv_path: Path = None, simulations: int = 10000, run_accuracy_tes
         alts = [f"{val} ({cnt/simulations*100:.1f}%)" for val, cnt in top3]
         print(f"  {col_name}: {', '.join(alts)}")
     
+    # Resolve duplicates: lottery rule requires columns 1-5 to have unique numbers
+    print("\n--- Duplicate Resolution ---")
+    # Build ranked candidates per column from simulation results
+    col_ranked_candidates = {
+        col: [val for val, _ in simulation_results[col].most_common()]
+        for col in range(1, 6)
+    }
+    max_iterations = 20
+    iteration = 0
+    while iteration < max_iterations:
+        seen = {}
+        duplicates = []
+        for col in range(1, 6):
+            val = prediction[col]
+            if val in seen:
+                duplicates.append(col)
+            else:
+                seen[val] = col
+        if not duplicates:
+            break
+        for col in duplicates:
+            current_val = prediction[col]
+            used_values = set(prediction[c] for c in range(1, 6) if c != col)
+            for candidate in col_ranked_candidates[col]:
+                if candidate not in used_values and candidate != current_val:
+                    print(f"Column {col}: {current_val} -> {candidate} (duplicate resolution)")
+                    prediction[col] = candidate
+                    new_hits = simulation_results[col][candidate]
+                    new_conf = new_hits / simulations * 100
+                    source[col] = f"duplicate resolution (confidence={new_conf:.1f}%, hits={new_hits})"
+                    break
+        iteration += 1
+    
     print("\n" + "=" * 50)
-    print("MONTE CARLO FINAL PREDICTION")
+    print("MONTE_NEXT - FINAL PREDICTION (with source)")
     print("=" * 50)
     for col in range(1, 6):
-        print(f"  Column {col}: {prediction[col]}")
-    print(f"  Mega: {prediction[6]}")
+        print(f"  Column {col}: {prediction[col]}  <- {source[col]}")
+    print(f"  Mega:     {prediction[6]}  <- {source[6]}")
     print("=" * 50)
     
     # Run accuracy test

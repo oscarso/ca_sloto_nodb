@@ -35,29 +35,68 @@ def predict_all(csv_path: Path = None, top_n: int = None, simulations: int = Non
     print(f"Data file: {csv_path}")
     print("=" * 70)
     
-    # Run oso_next (do not suppress output)
+    def run_capture(fn, *args, **kwargs):
+        """Run algorithm, capture stdout, split detailed output from FINAL PREDICTION block."""
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        result = fn(*args, **kwargs)
+        captured = sys.stdout.getvalue()
+        sys.stdout = old_stdout
+        # Split on FINAL PREDICTION marker
+        marker = "FINAL PREDICTION (with source)"
+        if marker in captured:
+            idx = captured.rfind(marker)
+            # Find the "====" line before marker (top header bar)
+            header_start = captured.rfind("=" * 10, 0, idx)
+            # Skip the second "====" (bottom of header) right after marker
+            second_bar = captured.find("=" * 10, idx)
+            # Advance past the entire second bar line (newline after it)
+            after_second_bar = captured.find("\n", second_bar) + 1 if second_bar != -1 else -1
+            # Find the closing "====" line (after the prediction content)
+            closing_bar = captured.find("=" * 10, after_second_bar) if after_second_bar > 0 else -1
+            if closing_bar != -1:
+                close_end = captured.find("\n", closing_bar) + 1
+            else:
+                close_end = len(captured)
+            detailed = captured[:header_start] + captured[close_end:]
+            final_block = captured[header_start:close_end]
+        else:
+            detailed = captured
+            final_block = ""
+        return result, detailed, final_block
+    
+    # Run all four algorithms, capturing output
     print("\n" + "=" * 70)
     print("[1] Running oso_next (detailed output below)")
     print("=" * 70)
-    oso_result = oso_next(csv_path, top_n=top_n, run_accuracy_test=False)
+    oso_result, oso_detail, oso_final = run_capture(oso_next, csv_path, top_n=top_n, run_accuracy_test=False)
+    print(oso_detail)
     
-    # Run kimi_next (do not suppress output)
     print("\n" + "=" * 70)
     print("[2] Running kimi_next (detailed output below)")
     print("=" * 70)
-    kimi_result = kimi_next(csv_path, run_accuracy_test=False)
+    kimi_result, kimi_detail, kimi_final = run_capture(kimi_next, csv_path, run_accuracy_test=False)
+    print(kimi_detail)
     
-    # Run weather_next (do not suppress output)
     print("\n" + "=" * 70)
     print("[3] Running weather_next (detailed output below)")
     print("=" * 70)
-    weather_result = weather_next(csv_path, run_accuracy_test=False)
+    weather_result, weather_detail, weather_final = run_capture(weather_next, csv_path, run_accuracy_test=False)
+    print(weather_detail)
     
-    # Run monte_next (do not suppress output)
     print("\n" + "=" * 70)
     print("[4] Running monte_next (detailed output below)")
     print("=" * 70)
-    monte_result = monte_next(csv_path, simulations=simulations, run_accuracy_test=False)
+    monte_result, monte_detail, monte_final = run_capture(monte_next, csv_path, simulations=simulations, run_accuracy_test=False)
+    print(monte_detail)
+    
+    # Show all FINAL PREDICTIONs grouped together
+    print("\n" + "#" * 70)
+    print("# ALL FINAL PREDICTIONS")
+    print("#" * 70)
+    for block in (oso_final, kimi_final, weather_final, monte_final):
+        if block:
+            print(block)
     
     # Read the last draw number from CSV
     last_draw_num = None
