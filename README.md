@@ -467,3 +467,24 @@ Added a **5th, independent** algorithm (`py/exclude/exclude_next.py`) that uses 
 
 ### Grouped FINAL PREDICTION output
 `predict_all.py` now prints each algorithm's detailed analysis first, then groups **all FINAL PREDICTION blocks together** under a `# ALL FINAL PREDICTIONS` section for easy comparison, then shows the comparison table and accuracy tests.
+
+### Correct-prediction marker in minus_one tests
+All 5 `*_minus_one.py` accuracy tests (`oso`, `kimi`, `weather`, `monte`, `exclude`) now append ` <--` next to any column or Mega value that matches the actual draw, making correct predictions easy to spot:
+
+```
+Actual last draw (Draw 4075):
+  Column 1: 1
+  Column 2: 3
+  Column 3: 23
+  Column 4: 31
+  Column 5: 45
+  Mega: 16
+
+Predicted draw:
+  Column 1: 7
+  Column 2: 3 <--
+  Column 3: 8
+  Column 4: 20
+  Column 5: 46
+  Mega: 6
+```

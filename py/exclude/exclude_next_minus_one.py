@@ -67,9 +67,12 @@ def exclude_next_minus_one(csv_path: Path = None, top_n: int = 3, simulations: i
 
     print(f"\nPredicted draw:")
     for col_idx in range(1, 6):
-        print(f"  Column {col_idx}: {predicted.get(col_idx)}")
+        val = predicted.get(col_idx)
+        mark = " <--" if val == actual_last[col_idx] else ""
+        print(f"  Column {col_idx}: {val}{mark}")
     mega = predicted.get(6)
-    print(f"  Mega: {mega}")
+    mega_mark = " <--" if mega == actual_last[6] else ""
+    print(f"  Mega: {mega}{mega_mark}")
 
     correct = 0
     total = 0

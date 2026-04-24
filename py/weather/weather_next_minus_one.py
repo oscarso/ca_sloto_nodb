@@ -73,9 +73,11 @@ def weather_next_minus_one(csv_path: Path = None) -> None:
     print(f"\nPredicted draw:")
     for col_idx in range(1, 6):
         val = predicted.get(col_idx)
-        print(f"  Column {col_idx}: {val}")
+        mark = " <--" if val == actual_last[col_idx] else ""
+        print(f"  Column {col_idx}: {val}{mark}")
     mega = predicted.get(6)
-    print(f"  Mega: {mega}")
+    mega_mark = " <--" if mega == actual_last[6] else ""
+    print(f"  Mega: {mega}{mega_mark}")
 
     # Calculate accuracy for main numbers
     correct = 0
