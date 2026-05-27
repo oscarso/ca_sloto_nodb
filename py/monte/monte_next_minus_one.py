@@ -1,100 +1,58 @@
-import csv
+import io
 import sys
 from pathlib import Path
-from typing import List, Dict
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from utils import load_csv, write_temp_csv
+
+sys.path.insert(0, str(Path(__file__).parent))
+from monte_next import monte_next
 
 
-def monte_next_minus_one(csv_path: Path = None, simulations: int = None) -> None:
-    """
-    Tests monte_next prediction accuracy by excluding the last draw.
-    """
+def monte_next_minus_one(csv_path: Path = None, simulations: int = 10000) -> None:
     if csv_path is None:
-        csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "data" / "dresult_test.csv"
+        csv_path = (
+            Path(sys.argv[1]) if len(sys.argv) > 1
+            else Path(__file__).resolve().parents[1] / "data" / "dresult_test.csv"
+        )
     if simulations is None:
         simulations = int(sys.argv[2]) if len(sys.argv) > 2 else 10000
-    
-    # Read all rows
-    all_rows: List[List[int]] = []
-    header = None
-    delimiter = ","
-    
-    with csv_path.open("r", newline="") as f:
-        sample = f.read(2048)
-        f.seek(0)
-        delimiter = ";" if ";" in sample and "," not in sample else ","
-        reader = csv.reader(f, delimiter=delimiter)
-        for raw in reader:
-            if not raw:
-                continue
-            if raw[0].strip().lower() == "draw_num":
-                header = raw
-                continue
-            all_rows.append([int(x) for x in raw[:7]])
+
+    all_rows, header, delimiter = load_csv(Path(csv_path))
 
     if len(all_rows) < 2:
         print("Not enough data to compare.")
         return
 
-    # Get the actual last draw (for comparison)
     actual_last = all_rows[-1]
-    
-    # Create temporary file without the last row (in data/tmp folder)
-    tmp_dir = csv_path.parent / "tmp"
-    tmp_dir.mkdir(exist_ok=True)
-    temp_path = tmp_dir / f"{csv_path.stem}_monte_temp.csv"
-    with temp_path.open("w", newline="") as f:
-        writer = csv.writer(f, delimiter=delimiter)
-        # Write header if it existed
-        if header:
-            writer.writerow(header)
-        # Write all rows except the last one
-        for row in all_rows[:-1]:
-            writer.writerow(row)
 
-    # Predict using monte_next on data without the last row
-    # Suppress output by redirecting stdout temporarily
-    import io
+    temp_path = write_temp_csv(Path(csv_path), all_rows[:-1], header, delimiter, suffix="_monte_temp")
+
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
-    
-    sys.path.insert(0, str(Path(__file__).parent))
-    from monte_next import monte_next
     predicted = monte_next(temp_path, simulations=simulations, run_accuracy_test=False)
-    
-    # Restore stdout
     sys.stdout = old_stdout
-    
-    # Clean up temp file
+
     temp_path.unlink()
 
-    # Compare prediction with actual last draw
     print(f"Actual last draw (Draw {actual_last[0]}):")
     for i in range(1, 6):
         print(f"  Column {i}: {actual_last[i]}")
     print(f"  Mega: {actual_last[6]}")
-    
-    print(f"\nPredicted draw:")
-    for col_idx in range(1, 6):
-        val = predicted.get(col_idx)
-        mark = " <--" if val == actual_last[col_idx] else ""
-        print(f"  Column {col_idx}: {val}{mark}")
-    mega = predicted.get(6)
-    mega_mark = " <--" if mega == actual_last[6] else ""
-    print(f"  Mega: {mega}{mega_mark}")
 
-    # Calculate accuracy for main numbers
-    correct = 0
-    total = 0
-    for col_idx in range(1, 6):
-        if predicted.get(col_idx) is not None:
-            total += 1
-            if predicted[col_idx] == actual_last[col_idx]:
-                correct += 1
-    
-    accuracy = (correct / total * 100) if total > 0 else 0
+    print(f"\nPredicted draw:")
+    for col in range(1, 6):
+        val = predicted.get(col)
+        mark = " <--" if val == actual_last[col] else ""
+        print(f"  Column {col}: {val}{mark}")
+    mega = predicted.get(6)
+    print(f"  Mega: {mega}{' <--' if mega == actual_last[6] else ''}")
+
+    correct = sum(1 for col in range(1, 6) if predicted.get(col) == actual_last[col])
+    total = sum(1 for col in range(1, 6) if predicted.get(col) is not None)
+    accuracy = correct / total * 100 if total > 0 else 0
     print(f"\nMain numbers accuracy: {correct}/{total} correct ({accuracy:.1f}%)")
-    
-    # Check mega accuracy separately
+
     if mega is not None and mega == actual_last[6]:
         print(f"Mega prediction: CORRECT ({mega})")
     elif mega is not None:
@@ -105,5 +63,5 @@ def monte_next_minus_one(csv_path: Path = None, simulations: int = None) -> None
 
 if __name__ == "__main__":
     csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-    simulations = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    simulations = int(sys.argv[2]) if len(sys.argv) > 2 else 10000
     monte_next_minus_one(csv_path, simulations)

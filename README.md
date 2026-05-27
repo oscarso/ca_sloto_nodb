@@ -6,6 +6,7 @@ Scripts to analyze vertical patterns in ca_sloto draw data and predict the next 
 
 ```
 py/
+├── utils.py          # Shared utilities (load_rows, pattern_fallback, resolve_duplicates, …)
 ├── oso/              # Pattern analysis scripts (order-based)
 │   ├── oso_order2.py
 │   ├── oso_order3.py
@@ -31,6 +32,20 @@ py/
 │   └── exclude_next_minus_one.py
 └── predict_all.py    # Compare all five algorithms
 ```
+
+## Shared Utilities (py/utils.py)
+
+Central module imported by every prediction script. Eliminates the repeated boilerplate that previously existed across 12+ files.
+
+| Function | Description |
+|---|---|
+| `load_csv(path)` | Reads CSV, auto-detects `,` or `;` delimiter, skips header row. Returns `(rows, header, delimiter)` |
+| `load_rows(path)` | Convenience wrapper — returns `rows` only |
+| `write_temp_csv(path, rows, header, delimiter, suffix)` | Writes a temp CSV to `path.parent/tmp/` for minus-one tests |
+| `pattern_fallback(rows, order, col_range)` | Generic N-row look-back predictor. Replaces the 8 hand-written `*_fallback()` functions that were previously in `oso_next.py` |
+| `resolve_duplicates(prediction, ranked_candidates)` | Ensures columns 1–5 have unique values by substituting next-best candidates |
+
+---
 
 ## OSO Pattern Analysis (py/oso/)
 
@@ -209,8 +224,8 @@ python3 py/oso/oso_next.py path/to/file.csv 3
 python3 py/oso/oso_next.py path/to/file.csv 5
 ```
 
-- **Main numbers priority**: 3-row heuristic → oso_order5 → oso_order4 → oso_order3 → oso_order2 fallback hierarchy
-- **Mega number priority**: oso_order_m5 → oso_order_m4 → oso_order_m3 → oso_order_m2 fallback hierarchy
+- **Main numbers priority**: 3-row heuristic → order5 → order4 → order3 → order2 (all via `pattern_fallback()` from utils)
+- **Mega number priority**: order_m5 → order_m4 → order_m3 → order_m2 (same generic function, `col_range=[6]`)
 - **top_n parameter**: When specified, shows additional "PREDICTION BASED ON TOP N PATTERN GROUPS" section with patterns used for each column
 - **Source tracking**: Each predicted number is annotated with its source (e.g., `order5 fallback`, `3-row pattern`, `order2 fallback`)
 - **Duplicate resolution**: Columns 1-5 are guaranteed to have unique numbers; duplicates are replaced using historical column frequency
@@ -321,6 +336,7 @@ python3 py/monte/monte_next.py path/to/file.csv
 python3 py/monte/monte_next.py path/to/file.csv 50000
 ```
 
+- **`seed` parameter** (new): Pass an integer seed for reproducible results across runs. Useful for debugging or comparing runs. Call from Python as `monte_next(csv_path, simulations=10000, seed=42)`.
 - **Approach** (3 rotating sampling methods):
   - **Distribution sampling**: Weighted random selection from historical frequencies
   - **Transition chains**: Sampling from Markov-style state transitions
@@ -362,6 +378,7 @@ python3 py/exclude/exclude_next.py path/to/file.csv 3 10000
   - **Staleness** (weight 0.40): Draws since last appearance — favors overdue numbers
   - `score = 0.6 × deficit_norm + 0.4 × staleness_norm`
 - **Exclusion constraint**: The chosen value for each column is guaranteed to differ from the top prediction of `oso_next`, `kimi_next`, `weather_next`, and `monte_next`. If the top-ranked candidate collides, it falls through to the next-best.
+- **`precomputed_preds` parameter** (new): When called from `predict_all.py`, the other algorithms' results are passed in directly (as `{'oso': ..., 'kimi': ..., 'weather': ..., 'monte': ...}`), so those four algorithms are not run a second time. When called standalone (without this argument), it runs them internally as before.
 - **Source tracking**: Each number is annotated with `deficit+staleness score=X.XXX (count=N, stale=N draws, rank#N, excluded=[...])`
 - **Duplicate resolution**: Columns 1-5 guaranteed unique while still respecting the exclusion set
 - **Includes**: Automatically runs `exclude_next_minus_one` for accuracy test
@@ -396,6 +413,7 @@ python3 py/predict_all.py path/to/file.csv 5 50000
 - **Parameters**:
   - `top_n`: Controls oso_next pattern group filtering (default: 3)
   - `simulations`: Controls monte_next simulation count (default: 10000)
+- **No double-running**: oso, kimi, weather, and monte results are computed once and passed directly into `exclude_next` via `precomputed_preds`. Previously these four algorithms were run a second time inside `exclude_next`.
 - **Output flow**:
   1. Detailed output from each algorithm (FINAL PREDICTION extracted from inline output)
   2. `# ALL FINAL PREDICTIONS` — all FINAL PREDICTION blocks grouped together, each with per-column source/reason
@@ -488,3 +506,41 @@ Predicted draw:
   Column 5: 46
   Mega: 6
 ```
+
+---
+
+### Refactoring — shared utilities (py/utils.py)
+
+A new `py/utils.py` module was introduced to eliminate widespread code duplication. The following changes were applied across all 19 prediction scripts:
+
+**`load_rows()` / `load_csv()` / `write_temp_csv()`**
+The CSV loading block (detect delimiter → skip header → read rows) was copy-pasted in over 12 places. It now lives once in `utils.py`. Every script imports `load_rows()` (rows only) or `load_csv()` (rows + header + delimiter) as needed. The minus-one scripts additionally use `write_temp_csv()`.
+
+**`pattern_fallback(rows, order, col_range)`**
+`oso_next.py` previously contained 8 nearly-identical fallback functions — `order2_fallback`, `order3_fallback`, `order4_fallback`, `order5_fallback`, and the mega equivalents `order_m2_fallback` through `order_m5_fallback`. All 8 were removed and replaced by a single generic function in `utils.py`. The call site is now simply:
+```python
+fallback5 = pattern_fallback(rows, 5)          # main columns 1-5
+mega_pred = pattern_fallback(rows, 5, [6])[6]  # mega column only
+```
+
+**`resolve_duplicates(prediction, col_ranked_candidates)`**
+The duplicate-resolution loop (ensure columns 1–5 are unique, replace by next-best candidate) was copy-pasted identically into `oso_next`, `kimi_next`, `weather_next`, `monte_next`, and `exclude_next`. It now lives once in `utils.py` and all five modules call it.
+
+### Fixed: exclude_next double-ran all four sub-algorithms
+
+When `predict_all.py` ran, it executed oso → kimi → weather → monte, then called `exclude_next`, which silently re-ran all four again internally to build its exclusion set. Each algorithm was running **twice**.
+
+`exclude_next` now accepts an optional `precomputed_preds` dict. `predict_all.py` passes the already-computed results directly:
+```python
+exclude_next(csv_path, precomputed_preds={"oso": oso_result, "kimi": kimi_result, ...})
+```
+When called standalone (e.g. `python3 py/exclude/exclude_next.py`), the parameter is omitted and the sub-algorithms run normally.
+
+### New: `seed` parameter in monte_next
+
+`monte_next()` now accepts an optional `seed` argument for reproducible results:
+```python
+# always produces the same prediction for the same data
+monte_next(csv_path, simulations=10000, seed=42)
+```
+When `seed` is `None` (the default), behaviour is unchanged — results vary across runs.

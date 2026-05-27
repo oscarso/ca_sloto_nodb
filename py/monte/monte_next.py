@@ -1,218 +1,171 @@
-import csv
-import sys
-from pathlib import Path
-from typing import List, Dict, Tuple
 import random
+import sys
 from collections import Counter
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from utils import load_rows, resolve_duplicates
 
 
-def monte_next(csv_path: Path = None, simulations: int = 10000, run_accuracy_test: bool = True) -> Dict[int, int]:
+def monte_next(
+    csv_path: Path = None,
+    simulations: int = 10000,
+    seed: int = None,
+    run_accuracy_test: bool = True,
+) -> Dict[int, int]:
     """
     Monte Carlo simulation-based prediction.
-    
-    Completely different approach from oso/kimi/weather:
-    - Uses statistical sampling rather than pattern matching
-    - Runs thousands of random simulations based on historical distributions
-    - Accounts for column correlations through joint probability sampling
-    - Predicts based on most frequent outcomes across all simulations
+
+    Uses three interleaved strategies per simulation:
+      1. Pure weighted-random sampling from historical distribution
+      2. Markov-style transition sampling (from last draw)
+      3. Correlation-aware sequential column sampling
+
+    Args:
+        csv_path:    path to the CSV data file
+        simulations: number of simulations to run (default 10 000)
+        seed:        optional random seed for reproducibility
+        run_accuracy_test: whether to run the minus-one accuracy check
     """
     if csv_path is None:
-        csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "data" / "dresult_test.csv"
+        csv_path = (
+            Path(sys.argv[1]) if len(sys.argv) > 1
+            else Path(__file__).resolve().parents[1] / "data" / "dresult_test.csv"
+        )
     if simulations is None:
         simulations = int(sys.argv[2]) if len(sys.argv) > 2 else 10000
-    
-    rows: List[List[int]] = []
-    p = Path(csv_path)
-    
-    with p.open("r", newline="") as f:
-        sample = f.read(2048)
-        f.seek(0)
-        delimiter = ";" if ";" in sample and "," not in sample else ","
-        reader = csv.reader(f, delimiter=delimiter)
-        for raw in reader:
-            if not raw:
-                continue
-            if raw[0].strip().lower() == "draw_num":
-                continue
-            rows.append([int(x) for x in raw[:7]])
-    
+
+    if seed is not None:
+        random.seed(seed)
+
+    rows: List[List[int]] = load_rows(csv_path)
+
     if len(rows) < 5:
         print("Not enough data for Monte Carlo simulation (need at least 5 rows)")
         return {}
-    
+
     print("\n" + "=" * 50)
     print("MONTE CARLO SIMULATION PREDICTION")
     print("=" * 50)
     print(f"Running {simulations:,} simulations based on historical distributions...")
-    print(f"Data rows: {len(rows)}")
-    
-    # Analyze historical distributions per column
-    col_distributions: Dict[int, Counter] = {}
-    for col in range(1, 7):  # Columns 1-6 (main + mega)
-        values = [row[col] for row in rows]
-        col_distributions[col] = Counter(values)
-    
-    # Calculate transition probabilities (Markov-like but Monte Carlo style)
-    transitions: Dict[int, Dict[int, List[int]]] = {}
+    print(f"Data rows: {len(rows)}" + (f"  |  seed={seed}" if seed is not None else ""))
+
+    # Historical distributions per column
+    col_distributions: Dict[int, Counter] = {
+        col: Counter(row[col] for row in rows)
+        for col in range(1, 7)
+    }
+
+    # Markov-style transition lists
+    transitions: Dict[int, Dict[int, List[int]]] = {col: {} for col in range(1, 7)}
     for col in range(1, 7):
-        transitions[col] = {}
         for i in range(len(rows) - 1):
-            current = rows[i][col]
-            next_val = rows[i+1][col]
-            if current not in transitions[col]:
-                transitions[col][current] = []
-            transitions[col][current].append(next_val)
-    
-    # Column correlations (joint occurrences)
-    correlations: Dict[Tuple[int, int, int], Counter] = {}
+            cur, nxt = rows[i][col], rows[i + 1][col]
+            transitions[col].setdefault(cur, []).append(nxt)
+
+    # Column-pair correlations (for correlation-aware sampling)
+    correlations: Dict[Tuple[int, int], Counter] = {}
     for c1 in range(1, 6):
-        for c2 in range(c1+1, 6):
-            correlations[(c1, c2, 0)] = Counter()  # 0 = any, track pairs
+        for c2 in range(c1 + 1, 6):
+            correlations[(c1, c2)] = Counter()
             for row in rows:
-                pair = (row[c1], row[c2])
-                correlations[(c1, c2, 0)][pair] += 1
-    
+                correlations[(c1, c2)][(row[c1], row[c2])] += 1
+
     print("\n--- Historical Statistics ---")
     for col in range(1, 6):
-        dist = col_distributions[col]
-        most_common = dist.most_common(3)
-        print(f"Column {col}: Top values = {most_common}")
-    
-    mega_dist = col_distributions[6]
-    print(f"Mega: Top values = {mega_dist.most_common(3)}")
-    
-    # Run Monte Carlo simulations
+        print(f"Column {col}: Top values = {col_distributions[col].most_common(3)}")
+    print(f"Mega: Top values = {col_distributions[6].most_common(3)}")
+
     print(f"\n--- Running {simulations:,} Simulations ---")
-    
+
     simulation_results: Dict[int, Counter] = {i: Counter() for i in range(1, 7)}
-    
-    # Get last row as starting point for transitions
     last_row = rows[-1]
-    
+
     for sim in range(simulations):
-        # Method 1: Pure random sampling from distribution
-        if sim % 3 == 0:
+        method = sim % 3
+
+        if method == 0:
+            # Method 1: pure weighted random
             for col in range(1, 7):
-                # Weighted random choice based on historical frequency
-                values = list(col_distributions[col].keys())
-                weights = list(col_distributions[col].values())
-                chosen = random.choices(values, weights=weights, k=1)[0]
-                simulation_results[col][chosen] += 1
-        
-        # Method 2: Transition-based sampling
-        elif sim % 3 == 1:
+                vals = list(col_distributions[col].keys())
+                wts = list(col_distributions[col].values())
+                simulation_results[col][random.choices(vals, weights=wts, k=1)[0]] += 1
+
+        elif method == 1:
+            # Method 2: transition-based
             for col in range(1, 7):
-                current = last_row[col]
-                if current in transitions[col] and transitions[col][current]:
-                    # Sample from historical transitions
-                    next_candidates = transitions[col][current]
-                    chosen = random.choice(next_candidates)
+                cur = last_row[col]
+                if cur in transitions[col] and transitions[col][cur]:
+                    chosen = random.choice(transitions[col][cur])
                 else:
-                    # Fallback to distribution
-                    values = list(col_distributions[col].keys())
-                    weights = list(col_distributions[col].values())
-                    chosen = random.choices(values, weights=weights, k=1)[0]
+                    vals = list(col_distributions[col].keys())
+                    wts = list(col_distributions[col].values())
+                    chosen = random.choices(vals, weights=wts, k=1)[0]
                 simulation_results[col][chosen] += 1
-        
-        # Method 3: Constrained random walk with correlation
+
         else:
-            # Sample columns sequentially with correlation awareness
-            temp_prediction = {}
+            # Method 3: correlation-aware sequential
+            temp: Dict[int, int] = {}
             for col in range(1, 6):
                 if col == 1:
-                    # First column: pure distribution
-                    values = list(col_distributions[col].keys())
-                    weights = list(col_distributions[col].values())
-                    chosen = random.choices(values, weights=weights, k=1)[0]
+                    vals = list(col_distributions[col].keys())
+                    wts = list(col_distributions[col].values())
+                    chosen = random.choices(vals, weights=wts, k=1)[0]
                 else:
-                    # Subsequent columns: consider previous column correlation
-                    prev_col = col - 1
-                    prev_val = temp_prediction[prev_col]
-                    # Find correlated values
-                    correlated = []
-                    for (v1, v2), cnt in correlations.get((prev_col, col, 0), Counter()).items():
-                        if v1 == prev_val:
-                            correlated.extend([v2] * cnt)
-                    
-                    if correlated and random.random() < 0.7:  # 70% use correlation
+                    prev_val = temp[col - 1]
+                    correlated = [
+                        v2 for (v1, v2), cnt in correlations.get((col - 1, col), Counter()).items()
+                        if v1 == prev_val
+                        for _ in range(cnt)
+                    ]
+                    if correlated and random.random() < 0.7:
                         chosen = random.choice(correlated)
                     else:
-                        # Fallback to distribution
-                        values = list(col_distributions[col].keys())
-                        weights = list(col_distributions[col].values())
-                        chosen = random.choices(values, weights=weights, k=1)[0]
-                
-                temp_prediction[col] = chosen
+                        vals = list(col_distributions[col].keys())
+                        wts = list(col_distributions[col].values())
+                        chosen = random.choices(vals, weights=wts, k=1)[0]
+                temp[col] = chosen
                 simulation_results[col][chosen] += 1
-            
-            # Mega column independent
-            values = list(col_distributions[6].keys())
-            weights = list(col_distributions[6].values())
-            chosen = random.choices(values, weights=weights, k=1)[0]
-            simulation_results[6][chosen] += 1
-    
-    # Extract predictions (most frequent in simulations)
-    prediction = {}
-    confidence = {}
-    source = {}
-    
+
+            # Mega: independent
+            vals = list(col_distributions[6].keys())
+            wts = list(col_distributions[6].values())
+            simulation_results[6][random.choices(vals, weights=wts, k=1)[0]] += 1
+
+    # Extract predictions
+    prediction: Dict[int, int] = {}
+    source: Dict[int, str] = {}
+
     print("\n--- Simulation Results ---")
-    print("Column predictions based on frequency across all simulations:")
-    
     for col in range(1, 6):
-        most_common = simulation_results[col].most_common(1)[0]
-        prediction[col] = most_common[0]
-        confidence[col] = most_common[1] / simulations * 100
-        source[col] = f"Monte Carlo ({simulations:,} sims, confidence={confidence[col]:.1f}%, hits={most_common[1]})"
-        print(f"  Column {col}: {prediction[col]} (confidence: {confidence[col]:.1f}%)")
-    
-    mega_common = simulation_results[6].most_common(1)[0]
-    prediction[6] = mega_common[0]
-    confidence[6] = mega_common[1] / simulations * 100
-    source[6] = f"Monte Carlo ({simulations:,} sims, confidence={confidence[6]:.1f}%, hits={mega_common[1]})"
-    print(f"  Mega: {prediction[6]} (confidence: {confidence[6]:.1f}%)")
-    
-    # Show top 3 alternatives for each column
+        val, hits = simulation_results[col].most_common(1)[0]
+        prediction[col] = val
+        conf = hits / simulations * 100
+        source[col] = f"Monte Carlo ({simulations:,} sims, confidence={conf:.1f}%, hits={hits})"
+        print(f"  Column {col}: {val} (confidence: {conf:.1f}%)")
+
+    mega_val, mega_hits = simulation_results[6].most_common(1)[0]
+    prediction[6] = mega_val
+    mega_conf = mega_hits / simulations * 100
+    source[6] = f"Monte Carlo ({simulations:,} sims, confidence={mega_conf:.1f}%, hits={mega_hits})"
+    print(f"  Mega: {mega_val} (confidence: {mega_conf:.1f}%)")
+
     print("\n--- Top 3 Alternatives per Column ---")
     for col in range(1, 7):
         top3 = simulation_results[col].most_common(3)
-        col_name = f"Column {col}" if col < 6 else "Mega"
-        alts = [f"{val} ({cnt/simulations*100:.1f}%)" for val, cnt in top3]
-        print(f"  {col_name}: {', '.join(alts)}")
-    
-    # Resolve duplicates: lottery rule requires columns 1-5 to have unique numbers
+        label = f"Column {col}" if col < 6 else "Mega"
+        alts = [f"{v} ({cnt / simulations * 100:.1f}%)" for v, cnt in top3]
+        print(f"  {label}: {', '.join(alts)}")
+
+    # Duplicate resolution
     print("\n--- Duplicate Resolution ---")
-    # Build ranked candidates per column from simulation results
     col_ranked_candidates = {
-        col: [val for val, _ in simulation_results[col].most_common()]
+        col: [v for v, _ in simulation_results[col].most_common()]
         for col in range(1, 6)
     }
-    max_iterations = 20
-    iteration = 0
-    while iteration < max_iterations:
-        seen = {}
-        duplicates = []
-        for col in range(1, 6):
-            val = prediction[col]
-            if val in seen:
-                duplicates.append(col)
-            else:
-                seen[val] = col
-        if not duplicates:
-            break
-        for col in duplicates:
-            current_val = prediction[col]
-            used_values = set(prediction[c] for c in range(1, 6) if c != col)
-            for candidate in col_ranked_candidates[col]:
-                if candidate not in used_values and candidate != current_val:
-                    print(f"Column {col}: {current_val} -> {candidate} (duplicate resolution)")
-                    prediction[col] = candidate
-                    new_hits = simulation_results[col][candidate]
-                    new_conf = new_hits / simulations * 100
-                    source[col] = f"duplicate resolution (confidence={new_conf:.1f}%, hits={new_hits})"
-                    break
-        iteration += 1
-    
+    prediction = resolve_duplicates(prediction, col_ranked_candidates)
+
     print("\n" + "=" * 50)
     print("MONTE_NEXT - FINAL PREDICTION (with source)")
     print("=" * 50)
@@ -220,17 +173,15 @@ def monte_next(csv_path: Path = None, simulations: int = 10000, run_accuracy_tes
         print(f"  Column {col}: {prediction[col]}  <- {source[col]}")
     print(f"  Mega:     {prediction[6]}  <- {source[6]}")
     print("=" * 50)
-    
-    # Run accuracy test
+
     if run_accuracy_test:
         print("\n" + "=" * 50)
         print("MONTE_NEXT_MINUS_ONE: Accuracy Test")
         print("=" * 50)
-        sys.path.insert(0, str(Path(__file__).parent))
         from monte_next_minus_one import monte_next_minus_one
         monte_next_minus_one(csv_path)
         print("=" * 50)
-    
+
     return prediction
 
 
