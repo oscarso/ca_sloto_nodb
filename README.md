@@ -30,7 +30,10 @@ py/
 ├── exclude/          # Contrarian algorithm (differs from all 4)
 │   ├── exclude_next.py
 │   └── exclude_next_minus_one.py
-└── predict_all.py    # Compare all five algorithms
+├── hotcold/          # Hot/Cold frequency analysis
+│   ├── hotcold_next.py
+│   └── hotcold_next_minus_one.py
+└── predict_all.py    # Compare all six algorithms
 ```
 
 ## Shared Utilities (py/utils.py)
@@ -390,13 +393,80 @@ Tests exclude_next prediction accuracy by excluding the last draw.
 python3 py/exclude/exclude_next_minus_one.py
 ```
 
+## HOTCOLD Frequency Analysis (py/hotcold/)
+
+### hotcold_next.py
+Predicts the next draw by classifying each number as **Hot**, **Warm**, **Cool**, **Cold**, or **Ice** based on recent frequency relative to statistical expectation, then ranking all candidates with a multi-window composite score.
+
+```bash
+# Use default file (recent_window=20, medium_window=40)
+python3 py/hotcold/hotcold_next.py
+
+# Specify custom file
+python3 py/hotcold/hotcold_next.py path/to/file.csv
+
+# Custom file + recent window
+python3 py/hotcold/hotcold_next.py path/to/file.csv 15
+
+# Custom file + both windows
+python3 py/hotcold/hotcold_next.py path/to/file.csv 15 30
+```
+
+**Classification labels** (based on recent frequency vs uniform expectation `1 / col_size`):
+
+| Label | Condition |
+|---|---|
+| **Hot** | recent rate ≥ 2.0× expected — on a streak |
+| **Warm** | recent rate ≥ 1.2× expected — above average |
+| **Cool** | recent rate ≥ 0.5× expected — below average |
+| **Cold** | recent rate < 0.5× expected — going quiet |
+| **Ice** | zero appearances in the recent window |
+
+**Score formula** (weights sum to 1.0):
+```
+score = 0.45 × recent_norm
+      + 0.25 × medium_norm
+      + 0.20 × alltime_norm
+      + 0.10 × due_norm
+```
+
+- **recent_norm** (weight 0.45): frequency in last `recent_window` draws, relative to the hottest number in that window
+- **medium_norm** (weight 0.25): same but over `medium_window` draws — confirms the trend
+- **alltime_norm** (weight 0.20): all-time historical frequency — long-term baseline
+- **due_norm** (weight 0.10): gap between historical rate and recent rate — rewards numbers that *should* appear often but have recently gone quiet
+
+**Parameters:**
+- `recent_window` (default 20): how many recent draws define "hot" classification
+- `medium_window` (default 40): medium look-back for the second frequency component
+
+**Source tracking**: Each predicted number is annotated with its classification label, dominant component, and raw counts:
+```
+Column 1: 7  <- hotcold score=0.412 [Hot] dominant=recent (0.369) | recent=4/20, alltime=47/300
+```
+
+**Duplicate resolution**: Columns 1-5 guaranteed unique; falls to next-best scored candidate.
+**Includes**: Automatically runs `hotcold_next_minus_one` for accuracy test.
+
+### hotcold_next_minus_one.py
+Tests hotcold_next accuracy by excluding the last draw.
+
+```bash
+python3 py/hotcold/hotcold_next_minus_one.py
+python3 py/hotcold/hotcold_next_minus_one.py path/to/file.csv 20 40
+```
+
+- **Method**: Excludes last draw, runs hotcold_next, compares prediction with actual
+- **Output**: Shows predicted vs actual with ` <--` markers on correct values and accuracy percentage
+
+---
+
 ## Comparison Script
 
 ### predict_all.py
-Runs all five prediction algorithms (oso_next, kimi_next, weather_next, monte_next, exclude_next) and displays results side by side. Detailed outputs are printed inline; all FINAL PREDICTION blocks are aggregated at the end.
+Runs all six prediction algorithms (oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next) and displays results side by side. Detailed outputs are printed inline; all FINAL PREDICTION blocks are aggregated at the end.
 
 ```bash
-# Use default file (top_n=3, simulations=10000)
+# Use default file (top_n=3, simulations=10000, recent=20, medium=40)
 python3 py/predict_all.py
 
 # Specify custom file
@@ -407,12 +477,17 @@ python3 py/predict_all.py path/to/file.csv 5
 
 # Custom file + top_n + simulations
 python3 py/predict_all.py path/to/file.csv 5 50000
+
+# All parameters
+python3 py/predict_all.py path/to/file.csv 5 50000 15 30
 ```
 
-- **Algorithms**: oso_next, kimi_next, weather_next, monte_next, exclude_next
+- **Algorithms**: oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next
 - **Parameters**:
   - `top_n`: Controls oso_next pattern group filtering (default: 3)
   - `simulations`: Controls monte_next simulation count (default: 10000)
+  - `recent_window`: Controls hotcold_next recent window (default: 20)
+  - `medium_window`: Controls hotcold_next medium window (default: 40)
 - **No double-running**: oso, kimi, weather, and monte results are computed once and passed directly into `exclude_next` via `precomputed_preds`. Previously these four algorithms were run a second time inside `exclude_next`.
 - **Output flow**:
   1. Detailed output from each algorithm (FINAL PREDICTION extracted from inline output)
@@ -423,6 +498,7 @@ python3 py/predict_all.py path/to/file.csv 5 50000
 - **Weak-signal handling**: If `oso_next` is flagged weak (≥3/5 columns from order2 fallback):
   - `oso_next` is suppressed from the FINAL PREDICTIONS section, comparison table, and accuracy test
   - `exclude_next` automatically drops `oso` from its exclusion set
+- **Accuracy tests**: Runs all six `*_minus_one` checks at the end
 - **Cleanup**: Removes temp files in `data/tmp/` after completion
 
 ## CSV Format
@@ -443,61 +519,104 @@ draw_num;d1;d2;d3;d4;mega
 
 Scripts designed for ca_sloto draw data analysis and prediction.
 
-## Recent Changes
+## Changelog
+
+Changes are listed newest-first.
+
+---
+
+### hotcold_next — new 6th algorithm
+
+Added `py/hotcold/hotcold_next.py` and `py/hotcold/hotcold_next_minus_one.py`.
+
+Each number per column is classified as **Hot / Warm / Cool / Cold / Ice** based on its recent appearance rate vs the uniform expectation. The composite score combines three time windows and a due factor:
+
+```
+score = 0.45 × recent_norm + 0.25 × medium_norm + 0.20 × alltime_norm + 0.10 × due_norm
+```
+
+The classification label appears next to every prediction:
+```
+Column 3: 18  <- hotcold score=0.412 [Hot] dominant=recent (0.369) | recent=4/20, alltime=47/300
+```
+
+`predict_all.py` was updated to run hotcold as algorithm `[6]` and include it in the comparison table. Two new optional CLI arguments: `recent_window` (default 20) and `medium_window` (default 40).
+
+---
+
+### Shared utilities — py/utils.py
+
+Introduced `py/utils.py` to replace repeated boilerplate across 19 files:
+
+| Function | What it replaced |
+|---|---|
+| `load_rows(path)` | CSV loading block copy-pasted 12+ times |
+| `load_csv(path)` | Same, but also returns header and delimiter (used by minus-one scripts) |
+| `write_temp_csv(...)` | Temp-file creation in every minus-one script |
+| `pattern_fallback(rows, order, col_range)` | 8 nearly-identical `*_fallback()` functions in `oso_next.py` |
+| `resolve_duplicates(pred, ranked)` | Duplicate-resolution loop copy-pasted into all 5 algorithm files |
+
+---
+
+### Fixed: exclude_next double-ran all four sub-algorithms
+
+`predict_all.py` ran oso → kimi → weather → monte, then `exclude_next` silently re-ran all four to build its exclusion set — each algorithm ran **twice**.
+
+`exclude_next` now accepts `precomputed_preds`. `predict_all.py` passes results directly:
+```python
+exclude_next(csv_path, precomputed_preds={"oso": oso_result, "kimi": kimi_result, ...})
+```
+When called standalone the parameter is omitted and the sub-algorithms run as before.
+
+---
+
+### New: seed parameter in monte_next
+
+`monte_next()` accepts an optional `seed` for reproducible runs:
+```python
+monte_next(csv_path, simulations=10000, seed=42)
+```
+
+---
 
 ### Source tracking for every prediction
-All 4 core algorithms (`oso`, `kimi`, `weather`, `monte`) now display **how** each predicted number was computed in their FINAL PREDICTION output, e.g.:
 
+All algorithms annotate each predicted number with *how* it was chosen:
 ```
-OSO_NEXT - FINAL PREDICTION (with source)
-  Column 1: 1   <- order5 fallback (5-row pattern)
-  Column 5: 39  <- 3-row pattern (38, 39, 45) (freq=1)
-  Mega:     15  <- order_m5 (5-row mega pattern)
-
-KIMI_NEXT - FINAL PREDICTION (with source)
-  Column 1: 1   <- ensemble score=0.613, dominant=frequency (0.300)
-
-WEATHER_NEXT - FINAL PREDICTION (with source)
-  Column 1: 3   <- weather score=0.445, dominant=trend (0.181)
-
-MONTE_NEXT - FINAL PREDICTION (with source)
-  Column 1: 1   <- Monte Carlo (10,000 sims, confidence=8.3%, hits=830)
+OSO_NEXT    Column 1: 1   <- order5 fallback (5-row pattern)
+KIMI_NEXT   Column 1: 1   <- ensemble score=0.613, dominant=frequency (0.300)
+WEATHER     Column 1: 3   <- weather score=0.445, dominant=trend (0.181)
+MONTE       Column 1: 1   <- Monte Carlo (10,000 sims, confidence=8.3%, hits=830)
+HOTCOLD     Column 1: 7   <- hotcold score=0.412 [Hot] dominant=recent (0.369)
 ```
+
+---
 
 ### Duplicate resolution across all algorithms
-All algorithms now guarantee **columns 1-5 have unique numbers** (matching lottery rules). Each uses its own scoring method's ranked candidates to pick the next-best replacement when duplicates are detected:
+
+All algorithms guarantee columns 1–5 have unique values. Each uses its own scoring method's ranked list to pick the next-best replacement:
 
 | Algorithm | Tie-break when duplicate |
-|-----------|--------------------------|
-| `oso_next` | Column's historical frequency |
+|---|---|
+| `oso_next` | Historical column frequency |
 | `kimi_next` | Next-best ensemble score |
 | `weather_next` | Next-best weather score |
 | `monte_next` | Next-best simulation frequency |
-| `exclude_next` | Next-best deficit+staleness score (with exclusion constraint) |
+| `exclude_next` | Next-best deficit+staleness score (respects exclusion set) |
+| `hotcold_next` | Next-best hotcold composite score |
+
+---
 
 ### Weak-signal detection in oso_next
-`oso_next` now flags its prediction as **weak** when ≥3/5 columns fall back all the way to `order2` (which almost always matches and carries the least signal). When weak:
-- `predict_all.py` suppresses `oso_next` from the comparison table, FINAL PREDICTIONS group, and accuracy test
-- `exclude_next` automatically drops it from its exclusion set
 
-### New algorithm: exclude_next
-Added a **5th, independent** algorithm (`py/exclude/exclude_next.py`) that uses a contrarian Deficit+Staleness scoring method and forces its predictions to differ from all 4 other algorithms' predictions per column. See the EXCLUDE section above.
+`oso_next` flags its prediction as **weak** when ≥3/5 columns fall back to `order2`. When weak, `predict_all.py` suppresses it from the comparison table and `exclude_next` drops it from its exclusion set.
 
-### Grouped FINAL PREDICTION output
-`predict_all.py` now prints each algorithm's detailed analysis first, then groups **all FINAL PREDICTION blocks together** under a `# ALL FINAL PREDICTIONS` section for easy comparison, then shows the comparison table and accuracy tests.
+---
 
-### Correct-prediction marker in minus_one tests
-All 5 `*_minus_one.py` accuracy tests (`oso`, `kimi`, `weather`, `monte`, `exclude`) now append ` <--` next to any column or Mega value that matches the actual draw, making correct predictions easy to spot:
+### Correct-prediction markers in minus_one tests
 
+All 6 `*_minus_one.py` scripts append ` <--` to any value matching the actual draw:
 ```
-Actual last draw (Draw 4075):
-  Column 1: 1
-  Column 2: 3
-  Column 3: 23
-  Column 4: 31
-  Column 5: 45
-  Mega: 16
-
 Predicted draw:
   Column 1: 7
   Column 2: 3 <--
@@ -509,38 +628,6 @@ Predicted draw:
 
 ---
 
-### Refactoring — shared utilities (py/utils.py)
+### Grouped FINAL PREDICTION output
 
-A new `py/utils.py` module was introduced to eliminate widespread code duplication. The following changes were applied across all 19 prediction scripts:
-
-**`load_rows()` / `load_csv()` / `write_temp_csv()`**
-The CSV loading block (detect delimiter → skip header → read rows) was copy-pasted in over 12 places. It now lives once in `utils.py`. Every script imports `load_rows()` (rows only) or `load_csv()` (rows + header + delimiter) as needed. The minus-one scripts additionally use `write_temp_csv()`.
-
-**`pattern_fallback(rows, order, col_range)`**
-`oso_next.py` previously contained 8 nearly-identical fallback functions — `order2_fallback`, `order3_fallback`, `order4_fallback`, `order5_fallback`, and the mega equivalents `order_m2_fallback` through `order_m5_fallback`. All 8 were removed and replaced by a single generic function in `utils.py`. The call site is now simply:
-```python
-fallback5 = pattern_fallback(rows, 5)          # main columns 1-5
-mega_pred = pattern_fallback(rows, 5, [6])[6]  # mega column only
-```
-
-**`resolve_duplicates(prediction, col_ranked_candidates)`**
-The duplicate-resolution loop (ensure columns 1–5 are unique, replace by next-best candidate) was copy-pasted identically into `oso_next`, `kimi_next`, `weather_next`, `monte_next`, and `exclude_next`. It now lives once in `utils.py` and all five modules call it.
-
-### Fixed: exclude_next double-ran all four sub-algorithms
-
-When `predict_all.py` ran, it executed oso → kimi → weather → monte, then called `exclude_next`, which silently re-ran all four again internally to build its exclusion set. Each algorithm was running **twice**.
-
-`exclude_next` now accepts an optional `precomputed_preds` dict. `predict_all.py` passes the already-computed results directly:
-```python
-exclude_next(csv_path, precomputed_preds={"oso": oso_result, "kimi": kimi_result, ...})
-```
-When called standalone (e.g. `python3 py/exclude/exclude_next.py`), the parameter is omitted and the sub-algorithms run normally.
-
-### New: `seed` parameter in monte_next
-
-`monte_next()` now accepts an optional `seed` argument for reproducible results:
-```python
-# always produces the same prediction for the same data
-monte_next(csv_path, simulations=10000, seed=42)
-```
-When `seed` is `None` (the default), behaviour is unchanged — results vary across runs.
+`predict_all.py` prints each algorithm's detailed analysis first, then groups all FINAL PREDICTION blocks under `# ALL FINAL PREDICTIONS` for easy side-by-side comparison.
