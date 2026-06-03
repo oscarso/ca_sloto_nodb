@@ -33,7 +33,10 @@ py/
 ├── hotcold/          # Hot/Cold frequency analysis
 │   ├── hotcold_next.py
 │   └── hotcold_next_minus_one.py
-└── predict_all.py    # Compare all six algorithms
+├── pattern/          # Structural pattern analysis
+│   ├── pattern_next.py
+│   └── pattern_next_minus_one.py
+└── predict_all.py    # Compare all seven algorithms
 ```
 
 ## Shared Utilities (py/utils.py)
@@ -460,10 +463,58 @@ python3 py/hotcold/hotcold_next_minus_one.py path/to/file.csv 20 40
 
 ---
 
+## PATTERN Structural Analysis (py/pattern/)
+
+### pattern_next.py
+Predicts the next draw by exploiting the **structural shape** of the results rather than sequences (oso) or raw frequency (hotcold). Analysis of the full history shows the five main numbers are always reported sorted ascending, so each column occupies its own band (col1 ≈ 1–10, col2 ≈ 11–20, col3 ≈ 21–30, col4 ≈ 31–40, col5 ≈ 41–47), and the five-number sum clusters tightly around its mean (~119, modal band 110–129).
+
+Each candidate value is scored per column with:
+
+```
+score = 0.55 × positional   (how typical the value is for THIS column)
+      + 0.30 × recent        (value frequency in the recent window)
+      + 0.15 × band          (conformance to the column's modal decade band)
+```
+
+After the five column winners are chosen, a **sum-band correction** swaps picks toward the historical modal total, then the mains are re-sorted ascending to respect the draw's structural shape. The mega number (col 6, range 1–27) uses positional + recent frequency only.
+
+```bash
+# Default file
+python3 py/pattern/pattern_next.py
+
+# Custom file
+python3 py/pattern/pattern_next.py path/to/file.csv
+
+# Custom file + recent window (default 50)
+python3 py/pattern/pattern_next.py path/to/file.csv 50
+```
+
+Example FINAL PREDICTION line:
+
+```
+Column 5: 46  <- pattern score=0.953 dominant=positional (0.503) | positional=265/2708, recent=9/50, band=41-50
+```
+
+**Duplicate resolution**: Columns 1-5 guaranteed unique; falls to next-best scored candidate.
+**Includes**: Automatically runs `pattern_next_minus_one` for accuracy test.
+
+### pattern_next_minus_one.py
+Tests pattern_next accuracy by excluding the last draw.
+
+```bash
+python3 py/pattern/pattern_next_minus_one.py
+python3 py/pattern/pattern_next_minus_one.py path/to/file.csv 50
+```
+
+- **Method**: Excludes last draw, runs pattern_next, compares prediction with actual
+- **Output**: Per-column ` <--` markers, positional accuracy percentage, plus an order-independent set-overlap count (fairer for a sorted draw)
+
+---
+
 ## Comparison Script
 
 ### predict_all.py
-Runs all six prediction algorithms (oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next) and displays results side by side. Detailed outputs are printed inline; all FINAL PREDICTION blocks are aggregated at the end.
+Runs all seven prediction algorithms (oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next, pattern_next) and displays results side by side. Detailed outputs are printed inline; all FINAL PREDICTION blocks are aggregated at the end.
 
 ```bash
 # Use default file (top_n=3, simulations=10000, recent=20, medium=40)
@@ -482,12 +533,13 @@ python3 py/predict_all.py path/to/file.csv 5 50000
 python3 py/predict_all.py path/to/file.csv 5 50000 15 30
 ```
 
-- **Algorithms**: oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next
+- **Algorithms**: oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next, pattern_next
 - **Parameters**:
   - `top_n`: Controls oso_next pattern group filtering (default: 3)
   - `simulations`: Controls monte_next simulation count (default: 10000)
   - `recent_window`: Controls hotcold_next recent window (default: 20)
   - `medium_window`: Controls hotcold_next medium window (default: 40)
+  - `pattern_next` runs with its own default recent window (50)
 - **No double-running**: oso, kimi, weather, and monte results are computed once and passed directly into `exclude_next` via `precomputed_preds`. Previously these four algorithms were run a second time inside `exclude_next`.
 - **Output flow**:
   1. Detailed output from each algorithm (FINAL PREDICTION extracted from inline output)
@@ -498,7 +550,7 @@ python3 py/predict_all.py path/to/file.csv 5 50000 15 30
 - **Weak-signal handling**: If `oso_next` is flagged weak (≥3/5 columns from order2 fallback):
   - `oso_next` is suppressed from the FINAL PREDICTIONS section, comparison table, and accuracy test
   - `exclude_next` automatically drops `oso` from its exclusion set
-- **Accuracy tests**: Runs all six `*_minus_one` checks at the end
+- **Accuracy tests**: Runs all seven `*_minus_one` checks at the end
 - **Cleanup**: Removes temp files in `data/tmp/` after completion
 
 ## CSV Format
@@ -522,6 +574,26 @@ Scripts designed for ca_sloto draw data analysis and prediction.
 ## Changelog
 
 Changes are listed newest-first.
+
+---
+
+### pattern_next — new 7th algorithm
+
+Added `py/pattern/pattern_next.py` and `py/pattern/pattern_next_minus_one.py`.
+
+Where the other algorithms model sequences (oso) or frequency (hotcold), `pattern_next` models the **structural shape** of a draw. Analysis of the full history showed each column occupies a fixed band (col1 ≈ 1–10, col2 ≈ 11–20, … col5 ≈ 41–47) because the mains are reported sorted ascending, and the modal decade band of each column is highly stable. Each candidate is scored per column with:
+
+```
+score = 0.55 × positional + 0.30 × recent + 0.15 × band
+```
+
+After the five winners are chosen, a **sum-band correction** swaps picks toward the historical modal total, then the mains are re-sorted ascending so the prediction keeps the draw's structural shape. The mega (col 6) uses positional + recent frequency only.
+
+```
+Column 5: 46  <- pattern score=0.953 dominant=positional (0.503) | positional=265/2708, recent=9/50, band=41-50
+```
+
+`predict_all.py` was updated to run pattern as algorithm `[7]` and include it in the comparison table. `pattern_next` runs with its own default recent window (50). The minus-one test also reports an order-independent **set-overlap** count, which is a fairer measure for a sorted draw.
 
 ---
 
@@ -588,6 +660,7 @@ KIMI_NEXT   Column 1: 1   <- ensemble score=0.613, dominant=frequency (0.300)
 WEATHER     Column 1: 3   <- weather score=0.445, dominant=trend (0.181)
 MONTE       Column 1: 1   <- Monte Carlo (10,000 sims, confidence=8.3%, hits=830)
 HOTCOLD     Column 1: 7   <- hotcold score=0.412 [Hot] dominant=recent (0.369)
+PATTERN     Column 1: 1   <- pattern score=1.000 dominant=positional (0.550) | positional=302/2708
 ```
 
 ---
@@ -604,6 +677,7 @@ All algorithms guarantee columns 1–5 have unique values. Each uses its own sco
 | `monte_next` | Next-best simulation frequency |
 | `exclude_next` | Next-best deficit+staleness score (respects exclusion set) |
 | `hotcold_next` | Next-best hotcold composite score |
+| `pattern_next` | Next-best structural-pattern score (then re-sorted ascending) |
 
 ---
 
@@ -615,7 +689,7 @@ All algorithms guarantee columns 1–5 have unique values. Each uses its own sco
 
 ### Correct-prediction markers in minus_one tests
 
-All 6 `*_minus_one.py` scripts append ` <--` to any value matching the actual draw:
+All 7 `*_minus_one.py` scripts append ` <--` to any value matching the actual draw:
 ```
 Predicted draw:
   Column 1: 7
