@@ -79,7 +79,7 @@ def range_oso3_next_minus_one(csv_path: Path = None) -> None:
     correct = sum(1 for col in range(1, 6) if predicted.get(col) == actual_last[col])
     total = sum(1 for col in range(1, 6) if predicted.get(col) is not None)
     accuracy = correct / total * 100 if total > 0 else 0
-    print(f"\nMain numbers accuracy: {correct}/{total} correct ({accuracy:.1f}%)")
+    print(f"\n[range_oso3_next] Main numbers accuracy: {correct}/{total} correct ({accuracy:.1f}%)")
 
     # Structural "hit" count: predicted mains that appear anywhere in the
     # actual draw (order-independent) — a fairer measure for a sorted draw.
@@ -94,6 +94,8 @@ def range_oso3_next_minus_one(csv_path: Path = None) -> None:
         print(f"Mega prediction: WRONG (predicted {mega}, actual {actual_last[6]})")
     else:
         print(f"Mega prediction: None (actual was {actual_last[6]})")
+
+    return correct, total
 
 
 if __name__ == "__main__":

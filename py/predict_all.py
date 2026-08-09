@@ -214,49 +214,52 @@ def predict_all(
     # ------------------------------------------------------------------
     # Summary table
     # ------------------------------------------------------------------
-    print("\n" + "=" * 70)
-    print(f"PREDICTION RESULTS (for Draw #{predicted_draw_num})")
-    print("=" * 70)
+    def print_summary_table():
+        print("\n" + "=" * 70)
+        print(f"PREDICTION RESULTS (for Draw #{predicted_draw_num})")
+        print("=" * 70)
 
-    if oso_weak:
-        print(f"{'Column':<12} {'kimi':<8} {'weather':<10} {'monte':<8} {'exclude':<10} {'hotcold':<8} {'pattern':<8} {'range_oso':<10}")
-    else:
-        print(f"{'Column':<12} {'oso':<8} {'kimi':<8} {'weather':<10} {'monte':<8} {'exclude':<10} {'hotcold':<8} {'pattern':<8} {'range_oso':<10}")
-    print("-" * 116)
-
-    for col in range(1, 6):
-        label = f"Column {col}"
-        k  = str(kimi_result.get(col, 'N/A'))
-        w  = str(weather_result.get(col, 'N/A'))
-        mo = str(monte_result.get(col, 'N/A'))
-        ex = str(exclude_result.get(col, 'N/A'))
-        hc = str(hotcold_result.get(col, 'N/A'))
-        pa = str(pattern_result.get(col, 'N/A'))
-        ro = str(range_oso_result.get(col, 'N/A'))
         if oso_weak:
-            print(f"{label:<12} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
+            print(f"{'Column':<12} {'kimi':<8} {'weather':<10} {'monte':<8} {'exclude':<10} {'hotcold':<8} {'pattern':<8} {'range_oso':<10}")
         else:
-            o = str(oso_result.get(col, 'N/A'))
-            print(f"{label:<12} {o:<8} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
+            print(f"{'Column':<12} {'oso':<8} {'kimi':<8} {'weather':<10} {'monte':<8} {'exclude':<10} {'hotcold':<8} {'pattern':<8} {'range_oso':<10}")
+        print("-" * 116)
 
-    print("-" * 116)
-    k  = str(kimi_result.get(6, 'N/A'))
-    w  = str(weather_result.get(6, 'N/A'))
-    mo = str(monte_result.get(6, 'N/A'))
-    ex = str(exclude_result.get(6, 'N/A'))
-    hc = str(hotcold_result.get(6, 'N/A'))
-    pa = str(pattern_result.get(6, 'N/A'))
-    ro = str(range_oso_result.get(6, 'N/A'))
-    if oso_weak:
-        print(f"{'Mega':<12} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
-    else:
-        o = str(oso_result.get(6, 'N/A'))
-        print(f"{'Mega':<12} {o:<8} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
-    print("=" * 70)
+        for col in range(1, 6):
+            label = f"Column {col}"
+            k  = str(kimi_result.get(col, 'N/A'))
+            w  = str(weather_result.get(col, 'N/A'))
+            mo = str(monte_result.get(col, 'N/A'))
+            ex = str(exclude_result.get(col, 'N/A'))
+            hc = str(hotcold_result.get(col, 'N/A'))
+            pa = str(pattern_result.get(col, 'N/A'))
+            ro = str(range_oso_result.get(col, 'N/A'))
+            if oso_weak:
+                print(f"{label:<12} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
+            else:
+                o = str(oso_result.get(col, 'N/A'))
+                print(f"{label:<12} {o:<8} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
 
-    ro_range = range_oso_result.get("_range")
-    if ro_range:
-        print(f"range_oso predicted range: {ro_range[0]}-{ro_range[1]}")
+        print("-" * 116)
+        k  = str(kimi_result.get(6, 'N/A'))
+        w  = str(weather_result.get(6, 'N/A'))
+        mo = str(monte_result.get(6, 'N/A'))
+        ex = str(exclude_result.get(6, 'N/A'))
+        hc = str(hotcold_result.get(6, 'N/A'))
+        pa = str(pattern_result.get(6, 'N/A'))
+        ro = str(range_oso_result.get(6, 'N/A'))
+        if oso_weak:
+            print(f"{'Mega':<12} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
+        else:
+            o = str(oso_result.get(6, 'N/A'))
+            print(f"{'Mega':<12} {o:<8} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
+        print("=" * 70)
+
+        ro_range = range_oso_result.get("_range")
+        if ro_range:
+            print(f"range_oso predicted range: {ro_range[0]}-{ro_range[1]}")
+
+    print_summary_table()
 
     print("\n" + "=" * 70)
     print("ALGORITHM CHARACTERISTICS")
@@ -290,38 +293,64 @@ def predict_all(
     from pattern_next_minus_one import pattern_next_minus_one
     from range_oso_next_minus_one import range_oso_next_minus_one
 
+    acc_results: Dict[str, tuple] = {}
+
     if not oso_weak:
         print("\n--- oso_next accuracy ---")
-        oso_next_minus_one(csv_path, top_n=top_n)
+        acc_results["oso_next"] = oso_next_minus_one(csv_path, top_n=top_n)
     else:
         print("\n--- oso_next accuracy (skipped: weak signal) ---")
 
     print("\n--- kimi_next accuracy ---")
-    kimi_next_minus_one(csv_path)
+    acc_results["kimi_next"] = kimi_next_minus_one(csv_path)
 
     print("\n--- weather_next accuracy ---")
-    weather_next_minus_one(csv_path)
+    acc_results["weather_next"] = weather_next_minus_one(csv_path)
 
     print("\n--- monte_next accuracy ---")
-    monte_next_minus_one(csv_path, simulations)
+    acc_results["monte_next"] = monte_next_minus_one(csv_path, simulations)
 
     print("\n--- exclude_next accuracy ---")
-    exclude_next_minus_one(csv_path, top_n=top_n, simulations=simulations)
+    acc_results["exclude_next"] = exclude_next_minus_one(csv_path, top_n=top_n, simulations=simulations)
 
     print("\n--- hotcold_next accuracy ---")
-    hotcold_next_minus_one(csv_path, recent_window=recent_window, medium_window=medium_window)
+    acc_results["hotcold_next"] = hotcold_next_minus_one(csv_path, recent_window=recent_window, medium_window=medium_window)
 
     print("\n--- pattern_next accuracy ---")
-    pattern_next_minus_one(csv_path)
+    acc_results["pattern_next"] = pattern_next_minus_one(csv_path)
 
     print("\n--- range_oso_next accuracy ---")
-    range_oso_next_minus_one(csv_path)
+    acc_results["range_oso_next"] = range_oso_next_minus_one(csv_path)
 
     # Clean up temp files
     tmp_dir = Path(csv_path).parent / "tmp"
     if tmp_dir.exists():
         shutil.rmtree(tmp_dir)
         print(f"\n[Cleaned up temp folder: {tmp_dir}]")
+
+    # ------------------------------------------------------------------
+    # High-accuracy summary (>= 40% main-number accuracy)
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 70)
+    print("ALGORITHMS WITH >= 40% MAIN-NUMBER ACCURACY")
+    print("=" * 70)
+    high_acc = []
+    for name, result in acc_results.items():
+        if not result:
+            continue
+        correct, total = result
+        if total > 0 and (correct / total * 100) >= 40:
+            high_acc.append((name, correct, total, correct / total * 100))
+    if high_acc:
+        for name, correct, total, pct in high_acc:
+            print(f"[{name}] Main numbers accuracy: {correct}/{total} correct ({pct:.1f}%)")
+    else:
+        print("(none)")
+    print("=" * 70)
+
+    # Re-print the summary table at the very end so it's visible without
+    # scrolling back up past the accuracy tests.
+    print_summary_table()
 
     print("\n" + "=" * 70)
 

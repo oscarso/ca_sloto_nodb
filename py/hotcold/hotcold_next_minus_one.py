@@ -81,7 +81,7 @@ def hotcold_next_minus_one(
     correct = sum(1 for col in range(1, 6) if predicted.get(col) == actual_last[col])
     total   = sum(1 for col in range(1, 6) if predicted.get(col) is not None)
     accuracy = correct / total * 100 if total > 0 else 0
-    print(f"\nMain numbers accuracy: {correct}/{total} correct ({accuracy:.1f}%)")
+    print(f"\n[hotcold_next] Main numbers accuracy: {correct}/{total} correct ({accuracy:.1f}%)")
 
     if mega is not None and mega == actual_last[6]:
         print(f"Mega prediction: CORRECT ({mega})")
@@ -89,6 +89,8 @@ def hotcold_next_minus_one(
         print(f"Mega prediction: WRONG (predicted {mega}, actual {actual_last[6]})")
     else:
         print(f"Mega prediction: None (actual was {actual_last[6]})")
+
+    return correct, total
 
 
 if __name__ == "__main__":
