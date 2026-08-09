@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / "monte"))
 sys.path.insert(0, str(Path(__file__).parent / "exclude"))
 sys.path.insert(0, str(Path(__file__).parent / "hotcold"))
 sys.path.insert(0, str(Path(__file__).parent / "pattern"))
+sys.path.insert(0, str(Path(__file__).parent / "rangeoso"))
 
 from oso_next import oso_next
 from kimi_next import kimi_next
@@ -22,6 +23,7 @@ from monte_next import monte_next
 from exclude_next import exclude_next
 from hotcold_next import hotcold_next
 from pattern_next import pattern_next
+from range_oso_next import range_oso_next
 
 
 def predict_all(
@@ -32,7 +34,7 @@ def predict_all(
     medium_window: int = None,
 ) -> None:
     """
-    Run all seven prediction algorithms and display results side by side.
+    Run all eight prediction algorithms and display results side by side.
 
     oso, kimi, weather, and monte are run first and their results are passed
     directly into exclude_next — avoiding the redundant re-run that previously
@@ -164,6 +166,16 @@ def predict_all(
     )
     print(pattern_detail)
 
+    print("\n" + "=" * 70)
+    print("[8] Running range_oso_next (detailed output below)")
+    print("=" * 70)
+    range_oso_result, range_oso_detail, range_oso_final = run_capture(
+        range_oso_next,
+        csv_path,
+        run_accuracy_test=False,
+    )
+    print(range_oso_detail)
+
     oso_weak = bool(oso_result.get("_weak"))
 
     # ------------------------------------------------------------------
@@ -177,7 +189,10 @@ def predict_all(
     blocks = []
     if not oso_weak:
         blocks.append(oso_final)
-    blocks.extend([kimi_final, weather_final, monte_final, exclude_final, hotcold_final, pattern_final])
+    blocks.extend([
+        kimi_final, weather_final, monte_final, exclude_final, hotcold_final,
+        pattern_final, range_oso_final,
+    ])
     for block in blocks:
         if block:
             print(block)
@@ -204,10 +219,10 @@ def predict_all(
     print("=" * 70)
 
     if oso_weak:
-        print(f"{'Column':<12} {'kimi':<8} {'weather':<10} {'monte':<8} {'exclude':<10} {'hotcold':<8} {'pattern':<8}")
+        print(f"{'Column':<12} {'kimi':<8} {'weather':<10} {'monte':<8} {'exclude':<10} {'hotcold':<8} {'pattern':<8} {'range_oso':<10}")
     else:
-        print(f"{'Column':<12} {'oso':<8} {'kimi':<8} {'weather':<10} {'monte':<8} {'exclude':<10} {'hotcold':<8} {'pattern':<8}")
-    print("-" * 104)
+        print(f"{'Column':<12} {'oso':<8} {'kimi':<8} {'weather':<10} {'monte':<8} {'exclude':<10} {'hotcold':<8} {'pattern':<8} {'range_oso':<10}")
+    print("-" * 116)
 
     for col in range(1, 6):
         label = f"Column {col}"
@@ -217,25 +232,31 @@ def predict_all(
         ex = str(exclude_result.get(col, 'N/A'))
         hc = str(hotcold_result.get(col, 'N/A'))
         pa = str(pattern_result.get(col, 'N/A'))
+        ro = str(range_oso_result.get(col, 'N/A'))
         if oso_weak:
-            print(f"{label:<12} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8}")
+            print(f"{label:<12} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
         else:
             o = str(oso_result.get(col, 'N/A'))
-            print(f"{label:<12} {o:<8} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8}")
+            print(f"{label:<12} {o:<8} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
 
-    print("-" * 104)
+    print("-" * 116)
     k  = str(kimi_result.get(6, 'N/A'))
     w  = str(weather_result.get(6, 'N/A'))
     mo = str(monte_result.get(6, 'N/A'))
     ex = str(exclude_result.get(6, 'N/A'))
     hc = str(hotcold_result.get(6, 'N/A'))
     pa = str(pattern_result.get(6, 'N/A'))
+    ro = str(range_oso_result.get(6, 'N/A'))
     if oso_weak:
-        print(f"{'Mega':<12} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8}")
+        print(f"{'Mega':<12} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
     else:
         o = str(oso_result.get(6, 'N/A'))
-        print(f"{'Mega':<12} {o:<8} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8}")
+        print(f"{'Mega':<12} {o:<8} {k:<8} {w:<10} {mo:<8} {ex:<10} {hc:<8} {pa:<8} {ro:<10}")
     print("=" * 70)
+
+    ro_range = range_oso_result.get("_range")
+    if ro_range:
+        print(f"range_oso predicted range: {ro_range[0]}-{ro_range[1]}")
 
     print("\n" + "=" * 70)
     print("ALGORITHM CHARACTERISTICS")
@@ -247,6 +268,10 @@ def predict_all(
     print("exclude_next: Contrarian deficit+staleness (oso excluded if weak)")
     print("hotcold_next: Hot/Cold frequency analysis across multiple time windows")
     print("pattern_next: Structural patterns - positional bands, decade bands, sum constraint")
+    print("range_oso:    Predicts next-draw min/max range (order5->4->3->2->mode cascade), then")
+    print("              picks each column via the same order5->4->3->2 hierarchical fallback")
+    print("              (whichever window size first has a historical match), constrained")
+    print("              to only pick within that range")
     print("=" * 70)
 
     # ------------------------------------------------------------------
@@ -263,6 +288,7 @@ def predict_all(
     from exclude_next_minus_one import exclude_next_minus_one
     from hotcold_next_minus_one import hotcold_next_minus_one
     from pattern_next_minus_one import pattern_next_minus_one
+    from range_oso_next_minus_one import range_oso_next_minus_one
 
     if not oso_weak:
         print("\n--- oso_next accuracy ---")
@@ -287,6 +313,9 @@ def predict_all(
 
     print("\n--- pattern_next accuracy ---")
     pattern_next_minus_one(csv_path)
+
+    print("\n--- range_oso_next accuracy ---")
+    range_oso_next_minus_one(csv_path)
 
     # Clean up temp files
     tmp_dir = Path(csv_path).parent / "tmp"

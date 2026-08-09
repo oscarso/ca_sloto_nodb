@@ -2,6 +2,22 @@
 
 Scripts to analyze vertical patterns in ca_sloto draw data and predict the next draw.
 
+## Quick Start
+
+Requires Python 3 only — no external dependencies.
+
+```bash
+cd ca_sloto_nodb
+
+# Run all 8 algorithms together (recommended)
+python3 py/predict_all.py data/2026-0805_dresult.csv
+
+# Run just one algorithm, e.g. the consolidated range+oso predictor
+python3 py/rangeoso/range_oso_next.py data/2026-0805_dresult.csv
+```
+
+`predict_all.py` accepts optional positional args, in order: `csv_path top_n simulations recent_window medium_window` — e.g. `python3 py/predict_all.py data/2026-0805_dresult.csv 5 50000 15 30`. Omit any trailing ones to use their defaults. Every individual algorithm script under `py/*/` can also be run standalone with `python3 py/<folder>/<script>.py path/to/file.csv`.
+
 ## Folder Structure
 
 ```
@@ -36,7 +52,17 @@ py/
 ├── pattern/          # Structural pattern analysis
 │   ├── pattern_next.py
 │   └── pattern_next_minus_one.py
-└── predict_all.py    # Compare all seven algorithms
+├── rangeoso/         # Range-constrained oso prediction
+│   ├── range_common.py             # Shared range-stage cascade (order5->4->3->2->mode)
+│   ├── range_oso3_next.py          # Fixed order3 column-pick (standalone, like oso_order3.py)
+│   ├── range_oso3_next_minus_one.py
+│   ├── range_oso4_next.py          # Fixed order4 column-pick (standalone)
+│   ├── range_oso4_next_minus_one.py
+│   ├── range_oso5_next.py          # Fixed order5 column-pick (standalone)
+│   ├── range_oso5_next_minus_one.py
+│   ├── range_oso_next.py           # Consolidated: hierarchical order5->4->3->2 (like oso_next.py)
+│   └── range_oso_next_minus_one.py # Accuracy test — this is the one predict_all.py runs
+└── predict_all.py    # Compare all eight algorithms
 ```
 
 ## Shared Utilities (py/utils.py)
@@ -511,10 +537,69 @@ python3 py/pattern/pattern_next_minus_one.py path/to/file.csv 50
 
 ---
 
+## RANGE + OSO Prediction (py/rangeoso/)
+
+All algorithms here share the same two-stage design: predict the next draw's min/max **range**, then predict each main column with an oso-style pattern match constrained to that range. `range_oso_next.py` is the algorithm `predict_all.py` actually runs — it consolidates the fixed-order variants (`range_oso3_next`, `range_oso4_next`, `range_oso5_next`) into one hierarchical predictor, the same relationship `oso_next.py` has to `oso_order2.py`..`oso_order5.py`.
+
+### range_common.py
+Shared range-stage logic (Stage 1), used by every algorithm in this folder. Not run directly.
+
+- `predict_range(rows, verbose=False)` → predicts `(range_min, range_max)` for the next draw's five main numbers (mega excluded). Example: draw 4105 `2;4;9;13;20;5` has range 2–20 (the trailing `5` mega number excluded).
+- Purely pattern/frequency based, **no averaging or arithmetic**: for each of the min-sequence and max-sequence (derived per-draw), tries a hierarchical order5 → order4 → order3 → order2 window match — the same cascade `oso_next` uses for its main columns — and falls back to the single historically most-frequent value (mode) only if none of those four window sizes has ever occurred before.
+
+### range_oso_next.py — consolidated (this is the one predict_all.py runs)
+Stage 1 predicts the range via `range_common.py`. Stage 2 picks each main column with the **same hierarchical order5 → order4 → order3 → order2 fallback** oso_next uses for its own columns: try the order5 pattern match first; if it exists *and* falls inside the predicted range, use it. Otherwise fall to order4, then order3, then order2. If none of the four window sizes produces an in-range match, it falls back to a merged ranked-candidate list — tail-match frequency summed across all four orders, then overall historical column frequency as a tie-break — restricted to in-range values.
+
+```
+RANGE_OSO_NEXT - FINAL PREDICTION (with source)
+  Predicted range: 1-47
+  Column 2: 22  <- order2 pattern (2-row match), in range [1-47]
+  Column 1: 1   <- range-constrained fallback -> next-best in-range candidate [1-47] (multi-order/frequency ranked)
+```
+
+The mega number uses the same order5 → order4 → order3 → order2 cascade (not range-constrained), then falls back to overall column-7 frequency.
+
+```bash
+# Use default file
+python3 py/rangeoso/range_oso_next.py
+
+# Specify custom file
+python3 py/rangeoso/range_oso_next.py path/to/file.csv
+```
+
+- **Source tracking**: Each predicted number is annotated with `order{5,4,3,2} pattern ({N}-row match), in range [...]` or `range-constrained fallback -> next-best in-range candidate [...] (multi-order/frequency ranked)`
+- **Duplicate resolution**: Columns 1-5 guaranteed unique; falls to next-best in-range ranked candidate (merged across orders)
+- **Includes**: Automatically runs `range_oso_next_minus_one` for accuracy test
+
+### range_oso_next_minus_one.py
+Tests range_oso_next accuracy by excluding the last draw.
+
+```bash
+python3 py/rangeoso/range_oso_next_minus_one.py
+python3 py/rangeoso/range_oso_next_minus_one.py path/to/file.csv
+```
+
+- **Method**: Excludes last draw, runs range_oso_next, compares prediction with actual
+- **Range containment check**: Reports HIT if the actual draw's min-max span is fully inside the predicted range, MISS otherwise
+- **Output**: Predicted vs actual range, per-column ` <--` markers, positional accuracy, and order-independent set-overlap count
+
+### range_oso3_next.py / range_oso4_next.py / range_oso5_next.py — standalone fixed-order variants
+These still exist and run standalone (the same relationship `oso_order2.py`..`oso_order5.py` have to `oso_next.py`) but are no longer run by `predict_all.py` now that `range_oso_next` covers all of them hierarchically. Each is identical in structure to `range_oso_next` except Stage 2 is pinned to a single window size — order3, order4, or order5 respectively — instead of trying all four.
+
+```bash
+python3 py/rangeoso/range_oso3_next.py path/to/file.csv   # fixed 3-row window
+python3 py/rangeoso/range_oso4_next.py path/to/file.csv   # fixed 4-row window
+python3 py/rangeoso/range_oso5_next.py path/to/file.csv   # fixed 5-row window
+```
+
+Each has its own `_next_minus_one.py` accuracy test, runnable the same way.
+
+---
+
 ## Comparison Script
 
 ### predict_all.py
-Runs all seven prediction algorithms (oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next, pattern_next) and displays results side by side. Detailed outputs are printed inline; all FINAL PREDICTION blocks are aggregated at the end.
+Runs all eight prediction algorithms (oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next, pattern_next, range_oso_next) and displays results side by side. Detailed outputs are printed inline; all FINAL PREDICTION blocks are aggregated at the end.
 
 ```bash
 # Use default file (top_n=3, simulations=10000, recent=20, medium=40)
@@ -533,24 +618,25 @@ python3 py/predict_all.py path/to/file.csv 5 50000
 python3 py/predict_all.py path/to/file.csv 5 50000 15 30
 ```
 
-- **Algorithms**: oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next, pattern_next
+- **Algorithms**: oso_next, kimi_next, weather_next, monte_next, exclude_next, hotcold_next, pattern_next, range_oso_next
 - **Parameters**:
   - `top_n`: Controls oso_next pattern group filtering (default: 3)
   - `simulations`: Controls monte_next simulation count (default: 10000)
   - `recent_window`: Controls hotcold_next recent window (default: 20)
   - `medium_window`: Controls hotcold_next medium window (default: 40)
   - `pattern_next` runs with its own default recent window (50)
+  - `range_oso_next` takes no tunable parameters — its cascade (order5 → order4 → order3 → order2 → mode) is pattern/frequency based only, nothing to configure
 - **No double-running**: oso, kimi, weather, and monte results are computed once and passed directly into `exclude_next` via `precomputed_preds`. Previously these four algorithms were run a second time inside `exclude_next`.
 - **Output flow**:
   1. Detailed output from each algorithm (FINAL PREDICTION extracted from inline output)
   2. `# ALL FINAL PREDICTIONS` — all FINAL PREDICTION blocks grouped together, each with per-column source/reason
-  3. Side-by-side comparison table for the next draw
+  3. Side-by-side comparison table for the next draw, plus the range_oso predicted range
   4. Algorithm characteristics summary
   5. Individual `minus_one` accuracy tests
 - **Weak-signal handling**: If `oso_next` is flagged weak (≥3/5 columns from order2 fallback):
   - `oso_next` is suppressed from the FINAL PREDICTIONS section, comparison table, and accuracy test
   - `exclude_next` automatically drops `oso` from its exclusion set
-- **Accuracy tests**: Runs all seven `*_minus_one` checks at the end
+- **Accuracy tests**: Runs all eight `*_minus_one` checks at the end
 - **Cleanup**: Removes temp files in `data/tmp/` after completion
 
 ## CSV Format
@@ -574,6 +660,55 @@ Scripts designed for ca_sloto draw data analysis and prediction.
 ## Changelog
 
 Changes are listed newest-first.
+
+---
+
+### range_oso_next — consolidated range_oso3/4/5 into one algorithm
+
+Added `py/rangeoso/range_oso_next.py` and `range_oso_next_minus_one.py`. `predict_all.py` now runs this single algorithm instead of `range_oso3_next`, `range_oso4_next`, and `range_oso5_next` as three separate table entries — back down to **eight** total algorithms.
+
+Mirrors the relationship `oso_next.py` has to `oso_order2.py`..`oso_order5.py`: rather than three fixed-window predictors shown side by side, one algorithm hierarchically tries order5, then order4, then order3, then order2 for each column and uses whichever window size first produces a match that's also inside the predicted range. If none of the four qualifies, it falls back to a ranked candidate list built from tail-match frequency **merged across all four orders** (not just one), then overall column frequency as a tie-break. The mega number uses the same order5→4→3→2 cascade, unconstrained.
+
+```
+RANGE_OSO_NEXT - FINAL PREDICTION (with source)
+  Predicted range: 1-47
+  Column 2: 22  <- order2 pattern (2-row match), in range [1-47]
+  Column 1: 1   <- range-constrained fallback -> next-best in-range candidate [1-47] (multi-order/frequency ranked)
+```
+
+The Stage 1 range-prediction cascade lives in `range_common.py` and is unchanged — still no averaging or arithmetic anywhere.
+
+`range_oso3_next.py`, `range_oso4_next.py`, and `range_oso5_next.py` (the fixed-window variants) still exist and still run standalone, exactly as `oso_order2.py`..`oso_order5.py` do relative to `oso_next.py` — they're just no longer each a separate `predict_all.py` table column now that `range_oso_next` covers all of them at once.
+
+---
+
+### range_oso4_next, range_oso5_next — new 9th & 10th algorithms (superseded — see above)
+
+Added `py/rangeoso/range_oso4_next.py`, `range_oso4_next_minus_one.py`, `range_oso5_next.py`, `range_oso5_next_minus_one.py`, and extracted the shared range-prediction logic (previously inline in `range_oso3_next.py`) into `py/rangeoso/range_common.py`.
+
+Both are identical to `range_oso3_next` in every respect except the column-pick stage's window size: `range_oso4_next` uses an oso_order4-style (4-row) pattern match, `range_oso5_next` uses oso_order5-style (5-row). The range-prediction stage (order5 → order4 → order3 → order2 → mode cascade on the min-sequence/max-sequence) is shared verbatim across all three via `range_common.predict_range()` — no duplication, no drift between them.
+
+`predict_all.py` was updated to run range_oso4 and range_oso5 as algorithms `[9]` and `[10]`, adding `range4` and `range5` columns to the comparison table and their predicted ranges/accuracy tests to the corresponding output sections.
+
+---
+
+### range_oso3_next — new 8th algorithm
+
+Added `py/rangeoso/range_oso3_next.py` and `py/rangeoso/range_oso3_next_minus_one.py`.
+
+Two-stage algorithm: first predicts the **range** (min-max span) of the next draw's five main numbers using a hierarchical order5 → order4 → order3 → order2 → mode pattern cascade on the historical min-sequence and max-sequence (mega excluded) — the same cascade `oso_next` uses for its main columns, applied to min/max instead. Then runs an **oso_order3**-style prediction per column, ranked by 3-row pattern-match frequency then overall column frequency, but constrained so the final pick — and any duplicate-resolution substitute — must fall inside the predicted range.
+
+```
+RANGE_OSO3_NEXT - FINAL PREDICTION (with source)
+  Predicted range: 8-35
+  Column 1: 8  <- range-constrained fallback -> next-best in-range candidate [8-35] (order3/frequency ranked)
+```
+
+The mega number is predicted separately (order3 pattern on column 7, frequency fallback) and is **not** range-constrained, since the range is defined only over the five main numbers.
+
+No arithmetic averaging is used anywhere in the range stage — lottery draw numbers aren't a time series to smooth. Each of the min-sequence and max-sequence tries order5, then order4, then order3, then order2 window matches; if none has a historical precedent, it falls to the single most-frequent historical value (mode) — pattern/frequency lookups only.
+
+`predict_all.py` was updated to run range_oso3 as algorithm `[8]`, add a `range3` column to the comparison table, print the predicted range beneath it, and include it in the accuracy-test pass.
 
 ---
 
@@ -661,6 +796,7 @@ WEATHER     Column 1: 3   <- weather score=0.445, dominant=trend (0.181)
 MONTE       Column 1: 1   <- Monte Carlo (10,000 sims, confidence=8.3%, hits=830)
 HOTCOLD     Column 1: 7   <- hotcold score=0.412 [Hot] dominant=recent (0.369)
 PATTERN     Column 1: 1   <- pattern score=1.000 dominant=positional (0.550) | positional=302/2708
+RANGE_OSO3  Column 1: 8   <- range-constrained fallback -> next-best in-range candidate [8-35]
 ```
 
 ---
@@ -678,6 +814,7 @@ All algorithms guarantee columns 1–5 have unique values. Each uses its own sco
 | `exclude_next` | Next-best deficit+staleness score (respects exclusion set) |
 | `hotcold_next` | Next-best hotcold composite score |
 | `pattern_next` | Next-best structural-pattern score (then re-sorted ascending) |
+| `range_oso_next` | Next-best in-range candidate, ranked by tail-match frequency merged across order5/4/3/2, then overall column frequency |
 
 ---
 
