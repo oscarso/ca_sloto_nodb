@@ -62,6 +62,7 @@ py/
 │   ├── range_oso5_next_minus_one.py
 │   ├── range_oso_next.py           # Consolidated: hierarchical order5->4->3->2 (like oso_next.py)
 │   └── range_oso_next_minus_one.py # Accuracy test — this is the one predict_all.py runs
+├── total_last_ten.py # Pooled hold-out backtest over the last N draws (run by predict_all.py)
 └── predict_all.py    # Compare all eight algorithms
 ```
 
@@ -633,11 +634,50 @@ python3 py/predict_all.py path/to/file.csv 5 50000 15 30
   3. Side-by-side comparison table for the next draw, plus the range_oso predicted range
   4. Algorithm characteristics summary
   5. Individual `minus_one` accuracy tests
+  6. `total_last_ten` — pooled backtest over the last 10 draws (see below)
 - **Weak-signal handling**: If `oso_next` is flagged weak (≥3/5 columns from order2 fallback):
   - `oso_next` is suppressed from the FINAL PREDICTIONS section, comparison table, and accuracy test
   - `exclude_next` automatically drops `oso` from its exclusion set
 - **Accuracy tests**: Runs all eight `*_minus_one` checks at the end
 - **Cleanup**: Removes temp files in `data/tmp/` after completion
+- **Runtime note**: Since `total_last_ten` re-runs every algorithm once per held-out draw (10 more full passes on top of everything else), a full `predict_all.py` run now takes noticeably longer — the extra time is mostly `monte_next`'s simulation count.
+
+### total_last_ten.py
+Pooled hold-out backtest over the **last N draws** (default 10), run automatically at the end of `predict_all.py`. Unlike each algorithm's own `*_next_minus_one.py` (which compares prediction to actual **column-by-column**, i.e. position-locked), this pools every algorithm's predicted main numbers (mega excluded) into one flat list and checks it against the actual draw the way a lottery ticket is normally scored — a match counts whenever a predicted number shows up **anywhere** among the actual 5, not just in the same column.
+
+For each of the last N draws (walked back from the most recent), it re-predicts that draw using only the history strictly before it — no data leakage from that draw or any later one — then reports what percentage of the pooled predictions matched.
+
+```bash
+# Default file, last 10 draws
+python3 py/total_last_ten.py
+
+# Custom file
+python3 py/total_last_ten.py path/to/file.csv
+
+# Custom file + number of draws
+python3 py/total_last_ten.py path/to/file.csv 10
+
+# All parameters: csv_path num_draws top_n simulations recent_window medium_window skip
+python3 py/total_last_ten.py path/to/file.csv 10 3 10000 20 40 0
+```
+
+- **`num_draws`** (default 10): how many of the most recent draws to walk back through
+- **`skip`** (default 0): how many of the most-recent draws to skip before starting the window — lets a long run be split into smaller batches, e.g. `skip=0 num_draws=5` then `skip=5 num_draws=5` covers the same 10 draws as one `skip=0 num_draws=10` call
+- **Pool size varies per draw**: normally 7 algorithms × 5 = 35 (oso is excluded whenever it's flagged weak for that draw), or 40 when oso isn't weak — the percentage is always computed against the actual pool size for that draw, not a fixed denominator
+- **Output**: a per-draw table of matches, pool size, and percentage matched, followed by an overall total across all N draws
+- **Includes**: same duplicate-safe, no-leakage prediction logic as the individual `*_next_minus_one.py` scripts, just pooled and set-matched instead of position-matched
+
+```
+TOTAL_LAST_10 — pooled hold-out test, Draw #4109 down to Draw #4100
+------------------------------------------------------------------------------
+Draw       Matches        Pool size    % matched
+------------------------------------------------------------------------------
+#4109      3/35           35              8.6%  [oso weak]
+#4108      1/35           35              2.9%  [oso weak]
+...
+------------------------------------------------------------------------------
+OVERALL across last 10 draws: 33/355 = 9.3%
+```
 
 ## CSV Format
 
@@ -660,6 +700,26 @@ Scripts designed for ca_sloto draw data analysis and prediction.
 ## Changelog
 
 Changes are listed newest-first.
+
+---
+
+### total_last_ten — pooled multi-draw backtest, wired into predict_all.py
+
+Added `py/total_last_ten.py`. Every existing `*_next_minus_one.py` compares a single held-out draw **column-by-column** (position-locked). `total_last_ten` instead pools every algorithm's predicted main numbers (mega excluded) into one flat list and checks it against the actual draw the way a lottery ticket is scored — a match counts wherever a predicted number lands among the actual 5, regardless of which column predicted it — and repeats this walk-forward (no data leakage) over the **last N draws** (default 10), not just the single most recent one.
+
+```
+TOTAL_LAST_10 — pooled hold-out test, Draw #4109 down to Draw #4100
+Draw       Matches        Pool size    % matched
+#4109      3/35           35              8.6%  [oso weak]
+...
+OVERALL across last 10 draws: 33/355 = 9.3%
+```
+
+`predict_all.py` now calls `total_last_ten(csv_path, num_draws=10, ...)` at the very end of its run, reusing the same `top_n`/`simulations`/`recent_window`/`medium_window` values passed on the command line — see the **Runtime note** in the `predict_all.py` section above, since this adds 10 more full algorithm passes to every run.
+
+A `skip` parameter lets a long run be split into smaller batches (e.g. `skip=0 num_draws=5` then `skip=5 num_draws=5`) when running the full 10-draw backtest at once is too slow for a given environment.
+
+This replaces an earlier, single-draw version of the same idea (`total_next_minus_one.py`), which has been removed.
 
 ---
 
