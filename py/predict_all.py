@@ -354,6 +354,20 @@ def predict_all(
 
     print("\n" + "=" * 70)
 
+    # ------------------------------------------------------------------
+    # total_last_ten (pooled hold-out backtest over the last 10 draws)
+    # ------------------------------------------------------------------
+    from total_last_ten import total_last_ten
+
+    total_last_ten(
+        csv_path,
+        num_draws=10,
+        top_n=top_n,
+        simulations=simulations,
+        recent_window=recent_window,
+        medium_window=medium_window,
+    )
+
 
 if __name__ == "__main__":
     csv_path      = Path(sys.argv[1]) if len(sys.argv) > 1 else None
